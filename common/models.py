@@ -59,8 +59,17 @@ class NoticeDetail(BaseModel):
         description="본문 텍스트. 본문이 이미지로만 작성된 공지는 "
         "그 사실을 알리는 안내 문구가 들어간다."
     )
+    body_images: list[str] = Field(
+        default_factory=list,
+        description="본문에 포함된 이미지의 URL 목록. 본문이 이미지로만 작성된 공지는 "
+        "이 링크를 사용자에게 그대로 안내해 직접 보게 할 것. 이미지가 없으면 빈 목록.",
+    )
     attachments: list[str] = Field(description="첨부파일 이름 목록")
     truncated: bool = Field(description="본문이 길이 제한으로 잘렸는지 여부")
+    source_url: str = Field(
+        default="",
+        description="이 공지 원문 페이지의 전체 URL. 사용자가 브라우저로 바로 열 수 있다.",
+    )
     stale_age_min: int | None = Field(
         default=None,
         description="학교 서버 조회에 실패해 캐시된 값을 반환한 경우, "

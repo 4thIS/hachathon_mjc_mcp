@@ -7,6 +7,7 @@ AI는 의미 있는 카테고리 이름만 쓰고, 상세 조회에는 목록이
 
 import re
 from typing import Literal
+from urllib.parse import urlencode, urljoin
 
 from mcp.types import ToolAnnotations
 
@@ -21,7 +22,8 @@ VIEW_URL = "https://www.mjc.ac.kr/bbs/data/view.do"
 MAX_BODY_CHARS = 4000
 _IMAGE_ONLY_BODY = (
     "(이 공지의 본문은 이미지로 작성되어 텍스트를 추출할 수 없습니다. "
-    "첨부파일 목록과 제목을 참고하세요.)"
+    "body_images의 이미지 링크를 사용자에게 안내하거나, "
+    "source_url에서 원문을 직접 확인하도록 하세요.)"
 )
 
 # 카테고리 키 -> (menu_idx, 사람이 읽는 게시판 이름)
@@ -102,7 +104,7 @@ def search_notices(
     )
 
 
-def parse_notice_detail(content: bytes) -> NoticeDetail:
+def parse_notice_detail(content: bytes, source_url: str) -> NoticeDetail:
     soup = parse_html(content)
     view = soup.select_one("div.board_view")
     if view is None:
@@ -122,6 +124,13 @@ def parse_notice_detail(content: bytes) -> NoticeDetail:
     truncated = len(body) > MAX_BODY_CHARS
     body = body[:MAX_BODY_CHARS] if body else _IMAGE_ONLY_BODY
 
+    # 상대 경로로 나오는 경우가 있어 원문 URL 기준으로 절대 URL을 만든다.
+    body_images = [
+        urljoin(source_url, src)
+        for image in (memo.select("img") if memo is not None else [])
+        if (src := image.get("src", "").strip())
+    ]
+
     attachments = [
         link.get_text(strip=True)
         for link in view.select("a[href*='fn_egov_downFile']")
@@ -135,21 +144,22 @@ def parse_notice_detail(content: bytes) -> NoticeDetail:
         posted_on=info.get("날짜", ""),
         views=int(views_text) if views_text.isdigit() else 0,
         body=body,
+        body_images=body_images,
         attachments=attachments,
         truncated=truncated,
+        source_url=source_url,
     )
 
 
 def _fetch_detail(menu_idx: str, bbs_mst_idx: str, data_idx: str) -> dict:
-    content = fetch(
-        VIEW_URL,
-        params={
-            "menu_idx": menu_idx,
-            "bbs_mst_idx": bbs_mst_idx,
-            "data_idx": data_idx,
-        },
-    )
-    return parse_notice_detail(content).model_dump(mode="json")
+    params = {
+        "menu_idx": menu_idx,
+        "bbs_mst_idx": bbs_mst_idx,
+        "data_idx": data_idx,
+    }
+    content = fetch(VIEW_URL, params=params)
+    source_url = f"{VIEW_URL}?{urlencode(params)}"
+    return parse_notice_detail(content, source_url).model_dump(mode="json")
 
 
 def get_notice(notice_id: str) -> NoticeDetail:
