@@ -9,17 +9,24 @@ import sys
 
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
-# Windows 콘솔 기본 인코딩(cp949)에서 한글 응답 시 UnicodeEncodeError가 난다.
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
+# 표준입출력 인코딩을 명시적으로 UTF-8로 고정한다. mcp.run()이 stdio 통로를
+# 넘겨받기 전, import 시점의 좁은 창에서만 실질적 의미가 있지만(그 이후엔 SDK가
+# 별도 통로를 쓴다), 로케일이 예상과 다른 환경(Windows cp949 콘솔, 리눅스 C
+# 로케일 등)에서 한글 처리 시 UnicodeEncodeError/UnicodeDecodeError가 나는 것을
+# 막는 방어선으로 둔다. 특정 OS 전용 문제가 아니므로 stdin/stdout 둘 다 고정한다.
+for _stream in (sys.stdin, sys.stdout):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
 
 from mcp.server import MCPServer  # noqa: E402
 
-from tools import library_seats, notices  # noqa: E402
+from tools import course_search, departments, library_seats, notices  # noqa: E402
 
 mcp = MCPServer("mjc")
 library_seats.register(mcp)
 notices.register(mcp)
+departments.register(mcp)
+course_search.register(mcp)
 
 
 if __name__ == "__main__":
