@@ -120,18 +120,47 @@ main
 
 **`tier1`이라는 이름의 브랜치는 만들지 않는다.** git은 브랜치를 `.git/refs/heads/` 아래 파일로 저장하므로, `tier1`(파일)과 `tier1/dh`(디렉토리 필요)는 공존할 수 없다. 통합 브랜치를 `tier1/merged`로 두면 `tier1`이 디렉토리로만 쓰여 문제가 없다(검증 완료).
 
-```bash
-# 통합 브랜치 생성 (팀장이 한 번만)
-git checkout -b tier1/merged main
-git push -u origin tier1/merged
+**머지는 GitHub Pull Request로 2단계에 걸쳐 진행한다.** 로컬에서 직접 `git merge`로 합치지 않는다. PR을 거치면 변경 내역이 GitHub에 남아 심사 때 기여도와 리뷰 과정을 그대로 보여줄 수 있다.
 
-# 개인 작업 브랜치 (각자)
-git checkout -b tier1/dh tier1/merged
-
-# 작업 완료 후 통합 브랜치로
-git checkout tier1/merged && git pull
-git merge tier1/dh && git push
 ```
+tier1/<이름>  --PR-->  tier1/merged  --PR-->  main
+              (팀원)                  (팀장)
+```
+
+**1단계 — 개인 작업 → 통합 브랜치 (각자)**
+
+```bash
+# 개인 작업 브랜치 생성
+git fetch origin
+git checkout -b tier1/dh origin/tier1/merged
+
+# 작업 후 푸시
+git push -u origin tier1/dh
+
+# PR 생성 — base를 반드시 명시한다
+gh pr create --base tier1/merged --head tier1/dh \
+  --title "feat: 도서관 좌석 조회 툴" --body "Task 2 구현"
+```
+
+**`--base tier1/merged`를 빠뜨리면 안 된다.** `gh pr create`는 base를 생략하면 저장소 기본 브랜치(`main`)로 PR을 만든다. 그러면 검토 없이 `main`으로 바로 가는 PR이 생겨 2단계 구조가 무너진다.
+
+**2단계 — 통합 브랜치 → main (팀장)**
+
+Tier 1의 모든 개인 PR이 머지된 뒤, 통합 브랜치에서 전체 테스트가 통과하는지 확인하고 최종 PR을 만든다.
+
+```bash
+git checkout tier1/merged && git pull
+.venv/Scripts/python -m pytest tests/ -v    # 전부 통과 확인
+
+gh pr create --base main --head tier1/merged \
+  --title "Tier 1: 로그인 불필요 툴 3종" --body "..."
+```
+
+**PR 검토 시 확인할 것** — 팀장이 1단계 PR을 머지하기 전에 본다.
+
+- 테스트가 통과하는가 (PR 설명에 실행 출력을 붙이게 한다)
+- `common/`, `tools/`, `server.py`에 `print()`가 없는가 (stdout 오염 = 서버 정지)
+- 자격증명·쿠키·개인정보가 코드나 fixture에 섞이지 않았는가 (공개 저장소이며 **한 번 머지되면 히스토리에서 지우기 어렵다**)
 
 **역할 분담**
 
