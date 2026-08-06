@@ -302,3 +302,26 @@ def test_fetch_does_not_wait_for_a_different_host(http_env, monkeypatch):
     http.fetch("https://lib.example.ac.kr/a")
     http.fetch("https://www.example.ac.kr/a")
     assert http_env == []
+
+
+def test_fetch_sends_custom_headers(http_env, monkeypatch):
+    captured = {}
+
+    def handler(request):
+        captured["referer"] = request.headers.get("referer")
+        return httpx.Response(200, content=b"ok")
+
+    _install_mock_transport(monkeypatch, handler)
+    http.fetch(
+        "https://ncsi.example.ac.kr/x",
+        headers={"Referer": "https://sugang.example.ac.kr/"},
+    )
+    assert captured["referer"] == "https://sugang.example.ac.kr/"
+
+
+def test_fetch_without_headers_still_works(http_env, monkeypatch):
+    def handler(request):
+        return httpx.Response(200, content=b"ok")
+
+    _install_mock_transport(monkeypatch, handler)
+    assert http.fetch("https://ncsi.example.ac.kr/x") == b"ok"
