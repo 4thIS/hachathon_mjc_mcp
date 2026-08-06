@@ -3,9 +3,10 @@ from pathlib import Path
 import pytest
 
 from common.errors import ParseError
-from tools.notices import parse_notice_list
+from tools.notices import get_notice, parse_notice_detail, parse_notice_list
 
 FIXTURE = Path(__file__).parent / "fixtures" / "notices_academic.html"
+DETAIL_FIXTURE = Path(__file__).parent / "fixtures" / "notice_detail.html"
 
 
 def test_parses_notices():
@@ -46,11 +47,6 @@ def test_raises_parse_error_when_table_missing():
         parse_notice_list(b"<html><body>no table here</body></html>", menu_idx=169)
 
 
-from tools.notices import parse_notice_detail
-
-DETAIL_FIXTURE = Path(__file__).parent / "fixtures" / "notice_detail.html"
-
-
 def test_parses_detail_metadata():
     detail = parse_notice_detail(DETAIL_FIXTURE.read_bytes())
     assert detail.title
@@ -76,7 +72,5 @@ def test_detail_raises_parse_error_when_view_missing():
 
 
 def test_get_notice_rejects_malformed_id():
-    from tools.notices import get_notice
-
     with pytest.raises(ParseError):
         get_notice("not-a-valid-id")

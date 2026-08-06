@@ -140,6 +140,18 @@ def parse_notice_detail(content: bytes) -> NoticeDetail:
     )
 
 
+def _fetch_detail(menu_idx: str, bbs_mst_idx: str, data_idx: str) -> dict:
+    content = fetch(
+        VIEW_URL,
+        params={
+            "menu_idx": menu_idx,
+            "bbs_mst_idx": bbs_mst_idx,
+            "data_idx": data_idx,
+        },
+    )
+    return parse_notice_detail(content).model_dump(mode="json")
+
+
 def get_notice(notice_id: str) -> NoticeDetail:
     """공지 한 건의 본문 전문과 첨부파일 목록을 조회한다.
 
@@ -151,15 +163,13 @@ def get_notice(notice_id: str) -> NoticeDetail:
         raise ParseError("공지 식별자 형식")
     menu_idx, bbs_mst_idx, data_idx = parts
 
-    content = fetch(
-        VIEW_URL,
-        params={
-            "menu_idx": menu_idx,
-            "bbs_mst_idx": bbs_mst_idx,
-            "data_idx": data_idx,
-        },
+    data, stale_age_min = with_fallback(
+        f"notice_{data_idx}",
+        lambda: _fetch_detail(menu_idx, bbs_mst_idx, data_idx),
     )
-    return parse_notice_detail(content)
+    detail = NoticeDetail.model_validate(data)
+    detail.stale_age_min = stale_age_min
+    return detail
 
 
 def register(mcp) -> None:
