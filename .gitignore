@@ -14,6 +14,9 @@ venv/
 *.secret
 .session_cache/
 
+# 로컬 MCP 클라이언트 설정 — 절대 경로가 들어가므로 각자 생성한다 (README 참고)
+.mcp.json
+
 # 런타임 캐시
 .cache/
 *.log
