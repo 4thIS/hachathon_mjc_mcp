@@ -18,6 +18,9 @@ USER_AGENT = (
 TIMEOUT = httpx.Timeout(connect=3.0, read=5.0, write=5.0, pool=5.0)
 MIN_INTERVAL_SEC = 1.0
 _ALLOWED_AUTH_HOSTS = frozenset({"sugang.mjc.ac.kr"})
+# fetch()는 임의 호스트로 나갈 수 있는 비인증 경로다. 자격증명을 싣는 헤더는
+# 여기로 넣을 수 없게 막는다(대소문자 무시 — HTTP 헤더명은 대소문자를 가리지 않는다).
+_FORBIDDEN_FETCH_HEADERS = frozenset({"cookie", "authorization"})
 
 _last_request_at: dict[str, float] = {}
 
@@ -46,7 +49,17 @@ def fetch(
     실패 시 한 번만 재시도한다. 조회 전용이므로 재시도가 안전하다.
     재시도도 같은 호스트에 대한 연속 요청이므로 대기 시간은 MIN_INTERVAL_SEC를 따른다.
     headers는 기본 User-Agent 위에 덮어써진다.
+
+    이 경로는 세션 쿠키가 필요 없는 요청 전용이라 대상 호스트를 제한하지 않는다.
+    그 전제를 관례가 아니라 코드로 지키기 위해, 자격증명을 싣는 헤더
+    (Cookie/Authorization)가 headers에 들어오면 요청 자체를 거부한다.
+    쿠키가 필요한 요청은 fetch_authenticated()를 쓸 것.
     """
+    if headers:
+        for name in headers:
+            if name.strip().lower() in _FORBIDDEN_FETCH_HEADERS:
+                raise FetchError("허용되지 않은 요청 헤더")
+
     host = httpx.URL(url).host
     elapsed = time.monotonic() - _last_request_at.get(host, 0.0)
     if elapsed < MIN_INTERVAL_SEC:

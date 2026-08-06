@@ -79,7 +79,7 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
 | `get_notice` | 공지 한 건의 본문, 첨부파일 목록, 본문 이미지 링크, 원문 페이지 주소 | `notice_id` (목록이 돌려준 값 그대로) | www.mjc.ac.kr 게시판 |
 | `list_departments` | 학과 목록(이름·코드). 로그인 불필요 | 없음 | sugang(정적 매핑) |
 | `search_courses` | 개설 강좌 검색. **로그인 필요** — 아래 참고 | `department_code`(목록이 돌려준 값), `course_type`, `grade`, `keyword` | sugang 수강신청 시스템 |
-| `get_syllabus` | 강의계획서 조회(NCSI 연동). **로그인 필요** | `department_code`, `course_code`, `section`(모두 search_courses 결과 값) | ncsi.mjc.ac.kr |
+| `get_syllabus` | 강의계획서 조회(NCSI 연동). **로그인 필요** | `department_code`(list_departments가 준 값 — search_courses 호출에 쓴 것과 동일한 값), `course_code`·`section`(search_courses 결과 값) | ncsi.mjc.ac.kr |
 
 모든 툴은 **읽기 전용**입니다(`read_only_hint=True`). 학교 시스템에 무언가를
 쓰거나 바꾸는 동작은 없습니다.

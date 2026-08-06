@@ -241,11 +241,12 @@ sugang 수강신청 화면에서 "강의계획서" 버튼을 누르면 `ncsi.mjc
 @mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
 def get_syllabus(department_code: str, course_code: str, section: str) -> SyllabusDetail:
     """강의계획서를 조회한다. 로그인 필요(search_courses와 동일 세션 재사용).
-    department_code/course_code/section은 search_courses 결과의
-    department_code(=list_departments 값)/course_code/section을 그대로 넘길 것."""
+    department_code는 list_departments가 돌려준 값 — search_courses 호출에 쓴 것과
+    동일한 값 — 을 그대로 다시 넘길 것. course_code/section은 search_courses가
+    돌려준 CourseSummary의 course_code/section을 그대로 넘길 것."""
 ```
 
-`search_courses`가 반환하는 `CourseSummary`에 **`section`(분반) 필드가 없어 새로 추가해야 한다** — `lectList` 응답의 `bunban`을 그대로 매핑한다(기존 `parse_courses()`가 이미 이 필드를 갖고 있으나 모델에 담지 않았을 뿐이다). `department_code`/`course_code`는 이미 `CourseSummary`가 들고 있는 값을 그대로 재사용한다(과목코드는 실측상 `subjectCdHr`와 `subjectCd`가 항상 같은 값이라 별도 필드가 필요 없다).
+`search_courses`가 반환하는 `CourseSummary`에 **`section`(분반) 필드가 없어 새로 추가해야 한다** — `lectList` 응답의 `bunban`을 그대로 매핑한다(기존 `parse_courses()`가 이미 이 필드를 갖고 있으나 모델에 담지 않았을 뿐이다). `course_code`는 이미 `CourseSummary`가 들고 있는 값을 그대로 재사용한다(과목코드는 실측상 `subjectCdHr`와 `subjectCd`가 항상 같은 값이라 별도 필드가 필요 없다). **`department_code`는 `CourseSummary`에 들어 있지 않다** — AI가 `search_courses`에 넘겼던 그 값(= `list_departments`가 준 학과 코드)을 그대로 다시 넘긴다. 학과 코드는 검색 조건으로 이미 AI 손에 있는 값이므로 결과 모델에 되돌려 담지 않는다(중복 필드를 만들지 않는다).
 
 ### 14.3 데이터 모델
 

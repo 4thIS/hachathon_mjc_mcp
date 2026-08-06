@@ -50,13 +50,16 @@ def _extract_ncsi_url(content: bytes) -> str:
 def _label_map(box, *, multiline: bool = False) -> dict[str, str]:
     result: dict[str, str] = {}
     table = box.select_one("table.bodyTbl") if box is not None else None
-    tbody = table.find("tbody", recursive=False) if table is not None else None
-    if tbody is None:
+    if table is None:
         return result
+    # lxml은 <tbody>를 자동으로 만들어 주지 않는다. 원문에 tbody가 없으면
+    # table 자신이 tr의 부모이므로 그쪽을 훑는다. 없다고 빈 dict를 돌려주면
+    # 빈 결과가 성공으로 위장된다.
+    root = table.find("tbody", recursive=False) or table
     # 이 표 자신의 행만 훑는다. select("th")는 하위를 재귀로 파고들어
     # 중첩된 표(연락처 칸의 table.headTbl)의 th까지 키로 만들 수 있다.
     # 훑는 범위를 고정해야 아래 라벨 차단이 우회되지 않는다.
-    for tr in tbody.find_all("tr", recursive=False):
+    for tr in root.find_all("tr", recursive=False):
         for th in tr.find_all("th", recursive=False):
             label = th.get_text(strip=True)
             # 연락처 칸은 값을 읽지 않고 건너뛴다. 이 td 안에 중첩된 표에
@@ -101,6 +104,11 @@ def parse_syllabus(content: bytes, source_url: str) -> SyllabusDetail:
         raise ParseError("강의계획서")
 
     goals = _label_map(sections.get("교과목표"), multiline=True)
+    if not goals:
+        # overview/goals/content_summary가 전부 이 표에서 나온다. 비어 있는데
+        # 성공으로 넘기면 알맹이 없는 결과를 정상 응답으로 위장하게 된다.
+        raise ParseError("강의계획서 교과목표")
+
     methods = _extract_evaluation_methods(sections.get("평가방법"))
 
     credit_text = basic.get("학점", "")
@@ -121,8 +129,11 @@ def parse_syllabus(content: bytes, source_url: str) -> SyllabusDetail:
 def get_syllabus(department_code: str, course_code: str, section: str) -> SyllabusDetail:
     """강의계획서를 조회한다. 로그인 필요(search_courses와 동일 세션 재사용).
 
-    department_code/course_code/section은 search_courses 결과의 값을
-    그대로 넘길 것. 원문에 있는 담당교수 연락처(전화·이메일)는 포함하지 않는다.
+    department_code는 list_departments가 돌려준 값 — 즉 이 과목을 찾을 때
+    search_courses에 넘긴 것과 동일한 값 — 을 그대로 다시 넘길 것
+    (CourseSummary에는 이 필드가 없다). course_code/section은 search_courses가
+    돌려준 CourseSummary의 course_code/section을 그대로 넘길 것.
+    원문에 있는 담당교수 연락처(전화·이메일)는 포함하지 않는다.
     주차별 15주 계획 등 상세는 반환값의 source_url에서 직접 확인할 것.
     """
     cookies = require_session("sugang")

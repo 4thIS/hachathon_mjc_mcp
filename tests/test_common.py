@@ -325,3 +325,56 @@ def test_fetch_without_headers_still_works(http_env, monkeypatch):
 
     _install_mock_transport(monkeypatch, handler)
     assert http.fetch("https://ncsi.example.ac.kr/x") == b"ok"
+
+
+# --- fetch()에 자격증명 헤더를 실을 수 없다 ---
+
+
+@pytest.mark.parametrize(
+    "header_name",
+    ["Cookie", "cookie", "COOKIE", "Authorization", "authorization", "AUTHORIZATION"],
+)
+def test_fetch_rejects_credential_headers(http_env, monkeypatch, header_name):
+    """fetch()는 호스트를 제한하지 않으므로 쿠키·인증 헤더가 실리면 안 된다."""
+    calls = []
+
+    def handler(request):
+        calls.append(request.url)
+        return httpx.Response(200, content=b"ok")
+
+    _install_mock_transport(monkeypatch, handler)
+    with pytest.raises(FetchError) as exc_info:
+        http.fetch("https://evil.example.com/x", headers={header_name: "SESSIONID=s3cr3t"})
+    assert "허용되지 않은 요청 헤더" in str(exc_info.value)
+    assert calls == []  # 요청이 아예 나가지 않아야 한다
+
+
+def test_fetch_credential_header_rejection_does_not_leak_value(http_env, monkeypatch):
+    def handler(request):
+        return httpx.Response(200, content=b"ok")
+
+    _install_mock_transport(monkeypatch, handler)
+    with pytest.raises(FetchError) as exc_info:
+        http.fetch("https://evil.example.com/x", headers={"Cookie": "SESSIONID=s3cr3t"})
+    assert "s3cr3t" not in str(exc_info.value)
+
+
+def test_fetch_still_allows_referer_header(http_env, monkeypatch):
+    """정당한 용도(ncsi 요청의 Referer)는 그대로 동작해야 한다."""
+    captured = {}
+
+    def handler(request):
+        captured["referer"] = request.headers.get("referer")
+        captured["cookie"] = request.headers.get("cookie")
+        return httpx.Response(200, content=b"ok")
+
+    _install_mock_transport(monkeypatch, handler)
+    assert (
+        http.fetch(
+            "https://ncsi.example.ac.kr/x",
+            headers={"Referer": "https://sugang.example.ac.kr/"},
+        )
+        == b"ok"
+    )
+    assert captured["referer"] == "https://sugang.example.ac.kr/"
+    assert captured["cookie"] is None
