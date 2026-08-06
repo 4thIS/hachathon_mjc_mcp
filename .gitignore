@@ -18,6 +18,9 @@ venv/
 .cache/
 *.log
 
+# 에이전트 작업용 임시 디렉토리 (작업 완료 시 삭제됨)
+.superpowers/
+
 # 에디터·OS
 .vscode/
 .idea/

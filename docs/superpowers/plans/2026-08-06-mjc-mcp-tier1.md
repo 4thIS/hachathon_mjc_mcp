@@ -420,6 +420,11 @@ class NoticeSummary(BaseModel):
 class NoticeList(BaseModel):
     category: str = Field(description="조회한 게시판 이름")
     notices: list[NoticeSummary] = Field(description="공지 목록. 최신순.")
+    stale_age_min: int | None = Field(
+        default=None,
+        description="학교 서버 조회에 실패해 캐시된 값을 반환한 경우, "
+        "그 값이 몇 분 전 것인지. 실시간 조회에 성공했다면 null.",
+    )
 
 
 class NoticeDetail(BaseModel):
@@ -898,9 +903,15 @@ def search_notices(
         raise ParseError(f"알 수 없는 게시판 '{category}'")
     menu_idx, board_name = BOARDS[category]
 
-    data, _ = with_fallback(f"notices_{category}", lambda: _fetch_list(menu_idx))
+    data, stale_age_min = with_fallback(
+        f"notices_{category}", lambda: _fetch_list(menu_idx)
+    )
     notices = [NoticeSummary.model_validate(n) for n in data["notices"]]
-    return NoticeList(category=board_name, notices=notices[: max(1, limit)])
+    return NoticeList(
+        category=board_name,
+        notices=notices[: max(1, limit)],
+        stale_age_min=stale_age_min,
+    )
 
 
 def register(mcp) -> None:
