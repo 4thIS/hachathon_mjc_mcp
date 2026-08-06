@@ -24,6 +24,7 @@ def test_course_has_required_fields():
     assert first.credit == 4
     assert first.grade == 3
     assert first.category == "전공과정"
+    assert first.section == "101"
 
 
 def test_schedule_converts_br_to_newline_and_keeps_room():

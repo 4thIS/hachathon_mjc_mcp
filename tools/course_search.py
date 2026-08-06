@@ -61,6 +61,7 @@ def parse_courses(content: bytes) -> list[CourseSummary]:
             grade=_int_or_zero(row.get("grade")),
             schedule=_BR_PATTERN.sub("\n", str(row.get("time", ""))).strip(),
             capacity=_int_or_zero(row.get("limitNum")),
+            section=str(row.get("bunban", "")),
         )
         for row in rows
     ]
