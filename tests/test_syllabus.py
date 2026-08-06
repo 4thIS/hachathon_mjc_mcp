@@ -1,12 +1,26 @@
+import re
 from pathlib import Path
 
 import pytest
 
 from common.errors import ParseError
+from common.parse import parse_html
 from common.session import SessionRequiredError
-from tools.syllabus import _extract_ncsi_url, parse_syllabus
+from tools.syllabus import _extract_ncsi_url, _label_map, parse_syllabus
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+_PHONE_SHAPED = re.compile(r"\d{2,4}-\d{3,4}-\d{4}")
+_EMAIL_SHAPED = re.compile(r"[\w.+-]+@[\w-]+\.\w+")
+
+
+def _basic_info_box():
+    soup = parse_html((FIXTURES / "syllabus_detail.html").read_bytes())
+    for box in soup.select("div.tabBox"):
+        heading = box.find("h3")
+        if heading is not None and heading.get_text(strip=True) == "교과목 기본정보":
+            return box
+    raise AssertionError("픽스처에 '교과목 기본정보' 섹션이 없다")
 
 
 def test_parse_syllabus_extracts_core_fields():
@@ -40,6 +54,33 @@ def test_parse_syllabus_never_includes_contact_info():
     dumped = detail.model_dump()
     assert "phone" not in dumped
     assert "email" not in dumped
+
+
+def test_label_map_never_extracts_contact_row():
+    """연락처 칸은 키로도 남기지 않는다. 값을 읽는 것 자체가 개인정보 추출이다."""
+    basic = _label_map(_basic_info_box())
+    assert "연락처" not in basic
+    # 중첩 표(table.headTbl)의 th가 키로 새어 들어오지도 않아야 한다.
+    assert "연락처 및 이메일 주소" not in basic
+    # 파싱은 정상적으로 계속되어야 한다 — 연락처 뒤에 오는 행들이 살아 있는지 확인.
+    assert basic["학점"] == "1"
+    assert basic["성취수준"] == "3수준"
+
+
+def test_label_map_holds_no_phone_or_email_shaped_value():
+    """중간 산출물(dict)에도 전화번호·이메일 형태의 문자열이 남으면 안 된다."""
+    basic = _label_map(_basic_info_box())
+    for key, value in basic.items():
+        assert not _PHONE_SHAPED.search(value), f"{key}에 전화번호 형태 문자열이 남았다"
+        assert not _EMAIL_SHAPED.search(value), f"{key}에 이메일 형태 문자열이 남았다"
+
+
+def test_parse_syllabus_output_has_no_phone_or_email_shaped_value():
+    detail = parse_syllabus((FIXTURES / "syllabus_detail.html").read_bytes(), "https://x")
+    for field, value in detail.model_dump().items():
+        text = value if isinstance(value, str) else str(value)
+        assert not _PHONE_SHAPED.search(text), f"{field}에 전화번호 형태 문자열이 남았다"
+        assert not _EMAIL_SHAPED.search(text), f"{field}에 이메일 형태 문자열이 남았다"
 
 
 def test_parse_syllabus_raises_parse_error_on_malformed_html():

@@ -21,6 +21,8 @@ LECT_PLAN_POP_URL = "https://sugang.mjc.ac.kr/core/lectPlanPop"
 NCSI_URL = "https://ncsi.mjc.ac.kr/forMJCCyber/lecture.do"
 _LOGGED_OUT_MARKER = "<title>로그아웃</title>"
 _NCSI_FIELDS = ("sbj", "maj", "year", "term", "group")
+# 이 라벨이 붙은 칸은 파서가 값을 읽지 않는다(담당교수 개인 연락처).
+_CONTACT_LABELS = frozenset({"연락처"})
 
 
 def _extract_ncsi_url(content: bytes) -> str:
@@ -48,14 +50,26 @@ def _extract_ncsi_url(content: bytes) -> str:
 def _label_map(box, *, multiline: bool = False) -> dict[str, str]:
     result: dict[str, str] = {}
     table = box.select_one("table.bodyTbl") if box is not None else None
-    if table is None:
+    tbody = table.find("tbody", recursive=False) if table is not None else None
+    if tbody is None:
         return result
-    for th in table.select("th"):
-        td = th.find_next_sibling("td")
-        if td is None:
-            continue
-        text = td.get_text("\n", strip=True) if multiline else td.get_text(strip=True)
-        result[th.get_text(strip=True)] = text
+    # 이 표 자신의 행만 훑는다. select("th")는 하위를 재귀로 파고들어
+    # 중첩된 표(연락처 칸의 table.headTbl)의 th까지 키로 만들 수 있다.
+    # 훑는 범위를 고정해야 아래 라벨 차단이 우회되지 않는다.
+    for tr in tbody.find_all("tr", recursive=False):
+        for th in tr.find_all("th", recursive=False):
+            label = th.get_text(strip=True)
+            # 연락처 칸은 값을 읽지 않고 건너뛴다. 이 td 안에 중첩된 표에
+            # 담당교수의 전화번호와 이메일이 들어 있어, get_text()를 부르는
+            # 순간 개인정보가 문자열로 잡힌다(SyllabusDetail에 실리지 않더라도
+            # 추출 자체를 하지 않는 것이 요구사항이다).
+            if label in _CONTACT_LABELS:
+                continue
+            td = th.find_next_sibling("td")
+            if td is None:
+                continue
+            text = td.get_text("\n", strip=True) if multiline else td.get_text(strip=True)
+            result[label] = text
     return result
 
 
