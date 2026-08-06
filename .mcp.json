@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mjc": {
+      "type": "stdio",
+      "command": "C:\\projects\\hachathon_mjc_mcp\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\projects\\hachathon_mjc_mcp\\server.py"]
+    }
+  }
+}
