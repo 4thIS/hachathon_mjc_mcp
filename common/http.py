@@ -54,3 +54,55 @@ def fetch(url: str, *, params: dict[str, str] | None = None) -> bytes:
         raise FetchError(type(exc).__name__) from None
     finally:
         _last_request_at[host] = time.monotonic()
+
+
+def _request_once(
+    url: str,
+    *,
+    cookies: dict[str, str],
+    method: str,
+    data: dict[str, str] | None,
+    params: dict[str, str] | None,
+) -> httpx.Response:
+    with httpx.Client(
+        timeout=TIMEOUT,
+        follow_redirects=False,
+        headers={"User-Agent": USER_AGENT},
+        cookies=cookies,
+    ) as client:
+        response = client.request(method, url, params=params, data=data)
+        if response.status_code >= 400:
+            response.raise_for_status()
+    return response
+
+
+def fetch_authenticated(
+    url: str,
+    *,
+    cookies: dict[str, str],
+    method: str = "GET",
+    data: dict[str, str] | None = None,
+    params: dict[str, str] | None = None,
+) -> httpx.Response:
+    """세션 쿠키가 필요한 요청.
+
+    fetch()와 달리 bytes가 아니라 httpx.Response 전체를 반환한다. 3xx
+    리다이렉트는 예외로 취급하지 않고 그대로 반환하므로, 호출자가
+    require_active_session()으로 세션 만료 여부를 판단해야 한다.
+    네트워크 오류나 4xx/5xx는 fetch()와 동일하게 1회 재시도한다.
+    """
+    host = httpx.URL(url).host
+    elapsed = time.monotonic() - _last_request_at.get(host, 0.0)
+    if elapsed < MIN_INTERVAL_SEC:
+        time.sleep(MIN_INTERVAL_SEC - elapsed)
+
+    try:
+        try:
+            return _request_once(url, cookies=cookies, method=method, data=data, params=params)
+        except httpx.HTTPError:
+            time.sleep(MIN_INTERVAL_SEC)
+            return _request_once(url, cookies=cookies, method=method, data=data, params=params)
+    except httpx.HTTPError as exc:
+        raise FetchError(type(exc).__name__) from None
+    finally:
+        _last_request_at[host] = time.monotonic()
