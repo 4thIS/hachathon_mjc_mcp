@@ -17,6 +17,7 @@ USER_AGENT = (
 )
 TIMEOUT = httpx.Timeout(connect=3.0, read=5.0, write=5.0, pool=5.0)
 MIN_INTERVAL_SEC = 1.0
+_ALLOWED_AUTH_HOSTS = frozenset({"sugang.mjc.ac.kr"})
 
 _last_request_at: dict[str, float] = {}
 
@@ -90,8 +91,18 @@ def fetch_authenticated(
     리다이렉트는 예외로 취급하지 않고 그대로 반환하므로, 호출자가
     require_active_session()으로 세션 만료 여부를 판단해야 한다.
     네트워크 오류나 4xx/5xx는 fetch()와 동일하게 1회 재시도한다.
+
+    세션 쿠키를 다루는 요청이 임의 호스트로 나가지 않도록 대상을
+    _ALLOWED_AUTH_HOSTS로 제한한다. common.session이 쿠키를
+    dict[str, str]로 저장해 domain/path/secure 스코프가 사라지므로,
+    이 검증이 없으면 url 인자가 사용자 입력이나 AI가 조합한 값일 때
+    세션 쿠키가 의도치 않은 목적지로 샐 수 있다.
     """
-    host = httpx.URL(url).host
+    parsed = httpx.URL(url)
+    if parsed.scheme != "https" or parsed.host not in _ALLOWED_AUTH_HOSTS:
+        raise FetchError("허용되지 않은 요청 대상")
+
+    host = parsed.host
     elapsed = time.monotonic() - _last_request_at.get(host, 0.0)
     if elapsed < MIN_INTERVAL_SEC:
         time.sleep(MIN_INTERVAL_SEC - elapsed)

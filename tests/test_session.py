@@ -1,8 +1,7 @@
-import json
-
 import httpx
 import pytest
 
+from common.errors import FetchError
 from common.http import fetch_authenticated
 from common.session import (
     SessionRequiredError,
@@ -29,7 +28,6 @@ def test_fetch_authenticated_sends_cookies_and_returns_full_response(monkeypatch
 
     import common.http as http_mod
     monkeypatch.setattr(http_mod.time, "sleep", lambda *_: None)
-    monkeypatch.setattr(http_mod, "httpx", httpx)
     monkeypatch.setattr(httpx, "Client", fake_client)
 
     resp = fetch_authenticated(
@@ -69,6 +67,22 @@ def test_fetch_authenticated_posts_form_data(monkeypatch):
     assert captured["method"] == "POST"
     assert "pComboClsMajCd=1201001" in captured["body"]
     assert resp.status_code == 200
+
+
+def test_fetch_authenticated_rejects_disallowed_host():
+    with pytest.raises(FetchError):
+        fetch_authenticated(
+            "https://evil.example.com/collect",
+            cookies={"JSESSIONID": "abc123"},
+        )
+
+
+def test_fetch_authenticated_rejects_non_https():
+    with pytest.raises(FetchError):
+        fetch_authenticated(
+            "http://sugang.mjc.ac.kr/core/d/lectList",
+            cookies={"JSESSIONID": "abc123"},
+        )
 
 
 def test_save_and_load_roundtrip(tmp_path, monkeypatch):
