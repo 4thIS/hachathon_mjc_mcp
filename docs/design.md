@@ -212,6 +212,6 @@ def search_courses(department_code: str, grade: int | None = None, keyword: str 
 2. `robots.txt` 및 이용약관 내용
 3. 시연장 네트워크에서 도서관 API 도달 여부
 4. 게시판 페이지네이션 파라미터 (범위 밖이지만 목록 개수 한계와 관련)
-5. **(Tier 2)** 로그인 성공 시 `Set-Cookie`(JSESSIONID 추정)의 실체 — 실제 로그인 시점의 응답 헤더로 확정 필요, 아직 미확정
+5. ~~**(Tier 2)** 로그인 성공 시 `Set-Cookie`(JSESSIONID 추정)의 실체~~ — **해결됨(2026-08-07).** 팀장이 `auth/login_helper.py`를 실제로 실행해 확인 — `httpx.Client`의 쿠키 잭이 로그인 응답의 `Set-Cookie`를 정상적으로 반영하고, `%LOCALAPPDATA%\mjc-mcp\session_sugang.json`에 세션이 정상 저장됨. 쿠키의 정확한 필드명은 자격증명 인접 정보라 여기 기록하지 않는다.
 6. **(Tier 2)** 강좌구분코드(`pComboSugangCd`)의 전체 매핑 — 계획 문서엔 `10=교양 추정`만 있음. 학과코드와 같은 방식(드롭다운 스크래핑)으로 `search_courses` 구현 초반에 확보한다
 7. **(Tier 2)** sugang 세션 수명이 관찰치로 30~40분이다. 데모에 포함한다면 시연 직전 로그인 헬퍼 재실행을 체크리스트에 넣는다
