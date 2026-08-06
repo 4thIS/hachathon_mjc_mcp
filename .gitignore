@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 가상환경
+.venv/
+venv/
+
+# 자격증명·세션 (저장소 안에 두지 않는 것이 원칙이나 실수 방지용으로 명시)
+.env
+.env.*
+*.secret
+.session_cache/
+
+# 런타임 캐시
+.cache/
+*.log
+
+# 에디터·OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
