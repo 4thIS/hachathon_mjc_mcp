@@ -2,9 +2,14 @@
 
 라이브 데모 중 학교 서버나 시연장 네트워크가 죽어도 툴이 답을 내놓게 하는 안전망.
 캐시된 값을 반환할 때는 몇 분 전 것인지 함께 알려 AI가 실시간 값으로 오인하지 않게 한다.
+
+안전망이 본체를 죽이지 않는다: 캐시 쓰기가 실패해도 이미 받은 데이터를 그대로 돌려주고,
+캐시 읽기가 실패하면 원래의 ToolError를 올린다.
 """
 
 import json
+import logging
+import sys
 import time
 from pathlib import Path
 from typing import Callable
@@ -12,6 +17,38 @@ from typing import Callable
 from common.errors import ToolError
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
+
+# stdout은 MCP stdio transport의 JSON-RPC 채널이므로 로그는 stderr로만 내보낸다.
+_logger = logging.getLogger(__name__)
+if not _logger.handlers:
+    _logger.addHandler(logging.StreamHandler(sys.stderr))
+_logger.propagate = False
+
+
+def _read_cache(path: Path) -> tuple[dict, int] | None:
+    """캐시를 읽어 (데이터, 나이(분))을 반환한다. 없거나 깨졌으면 None."""
+    if not path.exists():
+        return None
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8"))
+        age_min = int((time.time() - cached["saved_at"]) / 60)
+        return cached["data"], age_min
+    except (OSError, ValueError, KeyError, TypeError):
+        # 파일명은 호출자가 정한 고정 key라 원문 유출 위험이 없다.
+        _logger.warning("캐시를 읽지 못했습니다: %s", path.name)
+        return None
+
+
+def _write_cache(path: Path, data: dict) -> None:
+    """캐시 저장은 실패해도 무시한다. 이미 확보한 응답을 죽이지 않기 위해서다."""
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"saved_at": time.time(), "data": data}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except (OSError, ValueError, TypeError):
+        _logger.warning("캐시를 저장하지 못했습니다: %s", path.name)
 
 
 def with_fallback(
@@ -26,15 +63,10 @@ def with_fallback(
     try:
         data = fetch_fn()
     except ToolError:
-        if not path.exists():
+        cached = _read_cache(path)
+        if cached is None:
             raise
-        cached = json.loads(path.read_text(encoding="utf-8"))
-        age_min = int((time.time() - cached["saved_at"]) / 60)
-        return cached["data"], age_min
+        return cached
 
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"saved_at": time.time(), "data": data}, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    _write_cache(path, data)
     return data, None

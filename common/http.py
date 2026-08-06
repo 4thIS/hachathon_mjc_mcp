@@ -17,7 +17,6 @@ USER_AGENT = (
 )
 TIMEOUT = httpx.Timeout(connect=3.0, read=5.0, write=5.0, pool=5.0)
 MIN_INTERVAL_SEC = 1.0
-RETRY_DELAY_SEC = 0.5
 
 _last_request_at: dict[str, float] = {}
 
@@ -36,7 +35,8 @@ def _get_once(url: str, params: dict[str, str] | None) -> bytes:
 def fetch(url: str, *, params: dict[str, str] | None = None) -> bytes:
     """GET 요청 후 응답 본문을 bytes로 반환한다.
 
-    실패 시 0.5초 뒤 한 번만 재시도한다. 조회 전용이므로 재시도가 안전하다.
+    실패 시 한 번만 재시도한다. 조회 전용이므로 재시도가 안전하다.
+    재시도도 같은 호스트에 대한 연속 요청이므로 대기 시간은 MIN_INTERVAL_SEC를 따른다.
     """
     host = httpx.URL(url).host
     elapsed = time.monotonic() - _last_request_at.get(host, 0.0)
@@ -47,7 +47,7 @@ def fetch(url: str, *, params: dict[str, str] | None = None) -> bytes:
         try:
             return _get_once(url, params)
         except httpx.HTTPError:
-            time.sleep(RETRY_DELAY_SEC)
+            time.sleep(MIN_INTERVAL_SEC)
             return _get_once(url, params)
     except httpx.HTTPError as exc:
         # 원문을 담지 않기 위해 타입명만 넘기고 예외 체인을 끊는다.
