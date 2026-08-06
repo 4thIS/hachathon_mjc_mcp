@@ -77,6 +77,15 @@ class NoticeDetail(BaseModel):
     )
 
 
+class Department(BaseModel):
+    code: str = Field(description="search_courses의 department_code에 그대로 넘길 학과 코드")
+    name: str = Field(description="학과명")
+
+
+class DepartmentList(BaseModel):
+    departments: list[Department] = Field(description="sugang에 등록된 전체 학과 목록")
+
+
 class CourseSummary(BaseModel):
     course_code: str = Field(description="강좌 코드")
     name: str = Field(description="과목명")

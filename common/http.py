@@ -64,11 +64,12 @@ def _request_once(
     method: str,
     data: dict[str, str] | None,
     params: dict[str, str] | None,
+    headers: dict[str, str] | None,
 ) -> httpx.Response:
     with httpx.Client(
         timeout=TIMEOUT,
         follow_redirects=False,
-        headers={"User-Agent": USER_AGENT},
+        headers={"User-Agent": USER_AGENT, **(headers or {})},
         cookies=cookies,
     ) as client:
         response = client.request(method, url, params=params, data=data)
@@ -84,6 +85,7 @@ def fetch_authenticated(
     method: str = "GET",
     data: dict[str, str] | None = None,
     params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> httpx.Response:
     """세션 쿠키가 필요한 요청.
 
@@ -91,6 +93,9 @@ def fetch_authenticated(
     리다이렉트는 예외로 취급하지 않고 그대로 반환하므로, 호출자가
     require_active_session()으로 세션 만료 여부를 판단해야 한다.
     네트워크 오류나 4xx/5xx는 fetch()와 동일하게 1회 재시도한다.
+
+    headers는 기본 User-Agent 위에 덮어써진다(예: sugang은 lectList 호출에
+    Referer를 요구한다 — 실제 로그인 세션으로 실측 확인됨).
 
     세션 쿠키를 다루는 요청이 임의 호스트로 나가지 않도록 대상을
     _ALLOWED_AUTH_HOSTS로 제한한다. common.session이 쿠키를
@@ -109,10 +114,14 @@ def fetch_authenticated(
 
     try:
         try:
-            return _request_once(url, cookies=cookies, method=method, data=data, params=params)
+            return _request_once(
+                url, cookies=cookies, method=method, data=data, params=params, headers=headers
+            )
         except httpx.HTTPError:
             time.sleep(MIN_INTERVAL_SEC)
-            return _request_once(url, cookies=cookies, method=method, data=data, params=params)
+            return _request_once(
+                url, cookies=cookies, method=method, data=data, params=params, headers=headers
+            )
     except httpx.HTTPError as exc:
         raise FetchError(type(exc).__name__) from None
     finally:

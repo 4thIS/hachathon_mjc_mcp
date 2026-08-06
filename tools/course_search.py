@@ -85,6 +85,7 @@ def search_courses(
         cookies=cookies,
         method="POST",
         params={"fake": str(int(time.time() * 1000))},
+        headers={"Referer": "https://sugang.mjc.ac.kr/core/home"},
         data={
             "pCourseCd": "",
             "pSugangGbn": "S",
