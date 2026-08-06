@@ -47,7 +47,17 @@ tests/fixtures/         # 실제 응답 원본(bytes)
 README.md
 ```
 
-세션 저장소와 로그인 헬퍼는 이번 범위에 포함하지 않는다(8장 참고). 위 구조는 확장 시 이들이 들어갈 자리를 비워둔 것이며, 이번 구현에서는 생성하지 않는다.
+**Tier 2(인증 필요 기능)를 위한 추가 구조** — 8장 참고.
+
+```
+common/
+  session.py            # 세션 파일 read/write + require_session() (auth/·tools/ 공용)
+auth/
+  login_helper.py        # 독립 CLI. 사용자가 직접 실행 (Claude가 실행하지 않음)
+tools/
+  departments.py         # list_departments() — 학과코드 스크래핑 + 캐시
+  course_search.py       # search_courses() — 강좌 검색
+```
 
 **설계 근거**
 
@@ -110,18 +120,72 @@ def get_notice(notice_id: str) -> NoticeDetail:
 
 원래 후보였던 교수학습센터 프로그램 목록은 구조가 검증되지 않아 제외했다. 배점상 미완성 툴을 늘리는 것이 손해라고 판단했다.
 
-## 8. 인증이 필요한 기능 (이번 범위 밖, 설계 원칙만)
+## 8. Tier 2 — 인증이 필요한 기능
 
-수강신청 시스템 연동 등 로그인이 필요한 기능은 이번 구현 범위에 포함하지 않는다. 다만 확장 시 따를 원칙을 미리 정해둔다.
+sugang(수강신청) 시스템 연동. Tier 1과 달리 로그인이 필요하므로 아래 원칙과 구조를 따른다.
+
+**작업 시작 전 `/security-review`를 호출한다.** 전역 지침 B9(인증·인증정보·세션·토큰을 다룰 때)에 해당하므로, 구현 계획(writing-plans) 직후·실제 코딩 착수 직전에 실행한다.
+
+### 8.1 원칙
 
 - **비밀번호를 저장하지 않는다.** 교내 SSO는 90일마다 비밀번호 재설정을 강제하므로 저장된 비밀번호는 어차피 주기적으로 무효가 된다. 로그인 헬퍼가 실행될 때마다 입력받아 1회성으로 사용하고, 보관하는 것은 세션 정보뿐이다. 비밀번호 교체 주기와 캐시 무효화가 자연스럽게 맞아떨어진다.
 - **로그인 헬퍼는 사용자가 별도 터미널에서 직접 실행한다.** AI 세션 안에서 실행하면 입출력이 대화 기록에 남는다.
 - **자동 재로그인을 하지 않는다.** 캐시된 세션으로 먼저 시도하고, 실패가 감지되면 그때 사용자에게 헬퍼 재실행을 안내한다. 시간 기반으로 만료를 추적하지 않는다 — AI 에이전트는 호출 사이의 경과 시간을 알 수 없기 때문이다.
 - **세션 정보는 저장소 바깥의 OS 사용자 데이터 경로에 둔다.** `.gitignore`만으로는 부족하다. 이미 추적된 파일에는 효력이 없고, 마감 직전 전체 스테이징 한 번으로 뚫린다. 프로젝트가 클라우드 동기화 폴더에 있으면 함께 동기화되는 문제도 있다.
 
-**보호 범위를 정확히 적는다** — 파일 시스템 권한은 *다른 사용자 계정*으로부터 보호한다. **보호되지 않는 것**: 동일 계정으로 실행되는 모든 프로세스, 파일 복사·백업·git. OS 수준 암호화(Windows DPAPI 등)를 쓰면 *다른 PC로 복사된 사본*까지 범위가 넓어지지만 **동일 계정 프로세스는 여전히 막지 못한다.** 이번 범위에서는 도입 대비 효용이 낮다고 판단해 채택하지 않고, 경로 분리와 짧은 세션 수명으로 대응한다.
+**보호 범위를 정확히 적는다** — 파일 시스템 권한은 *다른 사용자 계정*으로부터 보호한다. **보호되지 않는 것**: 동일 계정으로 실행되는 모든 프로세스, 파일 복사·백업·git. OS 수준 암호화(Windows DPAPI 등)를 쓰면 *다른 PC로 복사된 사본*까지 범위가 넓어지지만 **동일 계정 프로세스는 여전히 막지 못한다.** 도입 대비 효용이 낮다고 판단해 채택하지 않고, 경로 분리와 짧은 세션 수명으로 대응한다.
 
 **자격증명 취급** — 인증이 필요한 엔드포인트의 응답은 테스트 fixture로 저장하지 않는다. 학번·이름 등이 섞이면 공개 저장소에 영구히 남는다. 인증 응답 본문을 그대로 출력하지 않고 성공 여부만 다룬다.
+
+### 8.2 담당자와 병렬 구조
+
+로그인 기반(`auth/login_helper.py`, `common/session.py`)은 **팀장 혼자** 구현한다. 자격증명을 다루는 코드는 실수의 파급력이 되돌릴 수 없는 종류(B8/B9)라 범위를 좁게 유지한다. 완료 즉시 `tier2/merged`에 푸시하면, 그 위의 두 툴은 세션 쿠키를 캐시에서 읽어 쓰기만 할 뿐 자격증명 자체를 만지지 않으므로 팀원에게 병렬로 맡긴다.
+
+| 담당 | 작업 | 비고 |
+|---|---|---|
+| 팀장 | `auth/login_helper.py`, `common/session.py` | `tier2/merged`에 직접 (Tier 1의 공통 레이어와 동일한 예외) |
+| 팀원 A | `tools/departments.py` (`list_departments`) | 학과 드롭다운 스크래핑 + 캐시 |
+| 팀원 B | `tools/course_search.py` (`search_courses`) | 강좌 검색. `department_code`는 `list_departments`가 준 값을 그대로 받음 |
+
+두 툴 모두 세션 실패 감지를 반복 구현하지 않도록 `common/session.py`에 `require_session(system: str) -> httpx.Cookies`(세션 없으면 표준 에러를 던짐)를 공용 인터페이스로 둔다.
+
+### 8.3 툴 인터페이스
+
+내부 코드를 에이전트에게 노출하지 않는다는 Tier 1 원칙을 그대로 따른다. 학과코드는 고정 enum이 아니라 스크래핑으로 얻는 동적 값이므로, `search_notices`/`get_notice`와 같은 "목록 → 상세" 관용구를 재사용한다.
+
+```python
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
+def list_departments() -> DepartmentList:
+    """sugang에 등록된 학과 목록을 조회한다.
+    반환된 code를 search_courses의 department_code에 그대로 넘긴다."""
+
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
+def search_courses(department_code: str, grade: int | None = None, keyword: str = "") -> CourseList:
+    """개설 강좌를 검색한다. department_code는 list_departments 결과에서 얻을 것."""
+```
+
+시간표 조합(여러 `search_courses` 호출을 엮어 시간표를 짜는 것)은 별도 툴로 만들지 않는다. AI가 스스로 할 수 있는 조합 추론이며, 따로 만드는 것은 중복 투자다.
+
+### 8.4 데이터 흐름
+
+```
+1. 사용자가 별도 터미널에서 login_helper.py 실행
+   → 학번/비밀번호 입력(에코 없음, 저장 안 함) → POST /loginChk
+   → 성공 시 세션 쿠키만 %LOCALAPPDATA%\mjc-mcp\session_sugang.json 에 저장
+
+2. AI가 list_departments() 호출
+   → require_session()으로 세션 확인 → 실패 시 "로그인 헬퍼를 실행하세요" 에러
+   → 성공 시 sugang 학과 드롭다운 GET → {code, name} 목록 반환 (로컬 캐시)
+
+3. AI가 search_courses(department_code, ...) 호출
+   → 같은 세션으로 POST /core/d/lectList → 강좌 목록 반환
+```
+
+### 8.5 에러 처리
+
+- 세션 없음/만료(로그인 페이지로 리다이렉트 감지) → `"세션이 없거나 만료되었습니다. 별도 터미널에서 python auth/login_helper.py를 실행해 로그인해주세요."` — 자동 재로그인 없음
+- 로그인 헬퍼 자체는 재시도 없음 (계정 잠금 리스크, Tier 1과 동일 원칙)
+- 세션 관련 예외 메시지에 쿠키 값·응답 헤더를 절대 담지 않음
 
 ## 9. 테스트 전략
 
@@ -140,7 +204,7 @@ def get_notice(notice_id: str) -> NoticeDetail:
 
 ## 11. 범위 밖 (YAGNI)
 
-자동 재로그인 · 백오프 라이브러리 · 구조화 로깅 · 게시판 페이지네이션 · 수강신청/E-class/커리어 시스템 연동 · 시스템 간 SSO 세션 공유 검증.
+자동 재로그인 · 백오프 라이브러리 · 구조화 로깅 · 게시판 페이지네이션 · 시간표 자동생성 툴(AI의 조합 추론으로 대체) · E-class/커리어 시스템 연동 · 시스템 간 SSO 세션 공유 검증.
 
 ## 12. 남은 확인 사항
 
@@ -148,3 +212,6 @@ def get_notice(notice_id: str) -> NoticeDetail:
 2. `robots.txt` 및 이용약관 내용
 3. 시연장 네트워크에서 도서관 API 도달 여부
 4. 게시판 페이지네이션 파라미터 (범위 밖이지만 목록 개수 한계와 관련)
+5. **(Tier 2)** 로그인 성공 시 `Set-Cookie`(JSESSIONID 추정)의 실체 — 실제 로그인 시점의 응답 헤더로 확정 필요, 아직 미확정
+6. **(Tier 2)** 강좌구분코드(`pComboSugangCd`)의 전체 매핑 — 계획 문서엔 `10=교양 추정`만 있음. 학과코드와 같은 방식(드롭다운 스크래핑)으로 `search_courses` 구현 초반에 확보한다
+7. **(Tier 2)** sugang 세션 수명이 관찰치로 30~40분이다. 데모에 포함한다면 시연 직전 로그인 헬퍼 재실행을 체크리스트에 넣는다
