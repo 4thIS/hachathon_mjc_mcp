@@ -153,6 +153,13 @@ git merge tier1/dh && git push
 
 ### Task 1: 공통 기반 (프로젝트 뼈대 + common 레이어)
 
+> **✅ 완료됨 (커밋 `fbca800`).** 코드 리뷰에서 이 태스크의 계획 코드에 결함 5건이 발견되어 아래 스텝의 코드와 실제 구현이 다릅니다. **공개 함수 시그니처는 전부 동일**하므로 Task 2~5에는 영향이 없지만, 다음 두 가지는 알고 있어야 합니다.
+>
+> - **`parse_xml`·`parse_html`이 파싱 실패 시 스스로 `ParseError`를 던집니다.** 호출부에서 `try/except`로 감쌀 필요가 없습니다. (원래 계획은 예외를 그대로 흘려보내 폴백 캐시가 우회되는 결함이 있었습니다.)
+> - **재시도 대기는 `MIN_INTERVAL_SEC`(1.0초)로 통일**되었고 `RETRY_DELAY_SEC` 상수는 삭제되었습니다.
+>
+> 실제 구현은 `common/` 아래 파일을 직접 읽으세요.
+
 **Files:**
 - Create: `requirements.txt`, `common/__init__.py`, `common/errors.py`, `common/http.py`, `common/parse.py`, `common/cache.py`, `common/models.py`, `tools/__init__.py`, `tests/__init__.py`
 - Test: `tests/test_common.py`
