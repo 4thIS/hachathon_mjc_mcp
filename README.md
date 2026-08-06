@@ -33,7 +33,9 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
 }
 ```
 
-끝입니다. 별도 계정이나 API 키가 필요 없습니다.
+끝입니다. 도서관 좌석·공지·학과 목록 조회는 별도 계정이나 API 키가 필요 없습니다.
+강좌 검색(`search_courses`)만 본인 학교 계정 로그인이 필요합니다 — 아래
+"로그인이 필요한 툴 사용법" 참고.
 
 > 요구 사항: Python 3.10 이상 (`mcp` SDK 요구 사항 기준. 개발·검증 환경은 3.14).
 > macOS/Linux는 `command`를 `.venv/bin/python`으로 바꿉니다.
@@ -58,6 +60,10 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
   툴 3개가 모두 호출됩니다.
 - "채용공지 중에 이번 주 마감인 거 있어?"
   → 목록의 제목·날짜를 훑고 필요하면 본문까지 확인합니다.
+- "정보통신공학과 3학년 전공 수업 뭐 있어?"
+  → `list_departments`로 학과명을 코드로 바꾸고, 그 코드로 `search_courses`를
+  호출합니다. 학과 내부 코드를 AI에게 미리 알려줄 필요가 없습니다(로그인 필요,
+  아래 참고).
 
 ---
 
@@ -68,9 +74,25 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
 | `get_library_seats` | 열람실 3곳(집중학습공간·개방형학습공간·미디어실) 실시간 좌석 현황 | 없음 | 도서관 좌석 시스템 |
 | `search_notices` | 공지 게시판 최신 글 목록 | `category`: `general`·`academic`·`scholarship`·`job` / `limit` | www.mjc.ac.kr 게시판 |
 | `get_notice` | 공지 한 건의 본문, 첨부파일 목록, 본문 이미지 링크, 원문 페이지 주소 | `notice_id` (목록이 돌려준 값 그대로) | www.mjc.ac.kr 게시판 |
+| `list_departments` | 학과 목록(이름·코드). 로그인 불필요 | 없음 | sugang(정적 매핑) |
+| `search_courses` | 개설 강좌 검색. **로그인 필요** — 아래 참고 | `department_code`(목록이 돌려준 값), `course_type`, `grade`, `keyword` | sugang 수강신청 시스템 |
 
 모든 툴은 **읽기 전용**입니다(`read_only_hint=True`). 학교 시스템에 무언가를
 쓰거나 바꾸는 동작은 없습니다.
+
+### 로그인이 필요한 툴 사용법 (`search_courses`)
+
+비밀번호를 저장하지 않으므로, 세션이 없거나 만료되면 별도 터미널에서 직접 로그인해야 합니다.
+
+```bash
+.venv/Scripts/python auth/login_helper.py sugang
+```
+
+학번·비밀번호를 입력하면(화면에 표시되지 않음) 세션만 로컬(`%LOCALAPPDATA%\mjc-mcp\`, 저장소 밖)에 저장합니다.
+비밀번호는 어디에도 저장하지 않으므로, 교내 SSO 비밀번호가 90일마다 강제로 바뀌어도
+다음에 헬퍼를 다시 실행할 때 그 시점의 비밀번호를 입력하면 됩니다. 세션이 만료되면
+`search_courses`가 자동으로 재로그인을 시도하지 않고 "헬퍼를 실행하세요"라는
+안내만 돌려줍니다.
 
 설계 의도 — 왜 목록과 상세를 나눴는지, 왜 게시판 내부 코드를 AI에게 숨기는지,
 데모 중 서버가 죽어도 답이 나오게 한 캐시 폴백 구조 등 — 은
@@ -80,14 +102,20 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
 
 ## 데이터 수집 원칙
 
-- 로그인 없이 누구나 볼 수 있는 **공개 페이지만** 조회합니다.
-- `robots.txt`를 확인했으며 `User-agent: * / Allow: /` 로 **전면 허용**입니다. (2026-08-06 확인)
+- 대부분의 툴은 로그인 없이 누구나 볼 수 있는 **공개 페이지만** 조회합니다.
+  `search_courses`만 예외로, 사용자 본인 계정 로그인이 필요합니다(아래 참고).
+- `robots.txt`를 확인했습니다. `www.mjc.ac.kr`은 `User-agent: * / Allow: /`로
+  전면 허용(2026-08-06). `sugang.mjc.ac.kr`은 `robots.txt` 자체가 없습니다(2026-08-07,
+  명시적 허용도 거부도 아닌 상태).
 - 동일 호스트에 대한 연속 요청 사이에 **최소 1초 간격**을 둡니다. 사람이 브라우저로
   접근하는 것보다 높은 빈도로 호출하지 않습니다.
 - 프로젝트를 식별할 수 있는 User-Agent(`MJC-MCP/0.1 (+저장소 주소)`)를 보냅니다.
 - 조회 결과는 사용자의 AI 클라이언트에만 전달됩니다. **외부로 전송하거나
   재배포하지 않습니다.** 로컬 캐시는 데모 중 장애 대비용이며 저장소에 포함되지 않습니다.
 - 이 저장소에는 계정·비밀번호·세션 등 어떤 자격증명도 포함되어 있지 않습니다.
+- `search_courses`(로그인 필요)는 사용자 본인 계정으로만 동작하며, 비밀번호는
+  디스크에 저장하지 않고 세션 쿠키만 저장소 바깥에 저장합니다. 자동 재로그인은
+  하지 않습니다.
 - 실제 서비스로 운영하려면 **학사팀 협의가 전제**입니다.
 
 ---
@@ -104,9 +132,13 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
   알려, AI가 잘린 내용을 전체인 것처럼 인용하지 않도록 합니다.
 - **학교 사이트 구조가 바뀌면 파싱이 깨집니다.** 다만 파싱 계층을 분리해 두어
   해당 툴 파일 하나만 고치면 되도록 설계했습니다.
-- **로그인이 필요한 기능(수강신청, E-class 등)은 이번 범위 밖입니다.** 확장 시
-  따를 자격증명 취급 원칙은 [docs/design.md](docs/design.md) 8장에 미리 정리해
-  두었습니다.
+- **`search_courses`는 실시간 신청 인원을 제공하지 않습니다.** sugang 자체가
+  이 값을 목록 응답에 포함하지 않고 별도 새로고침을 요구합니다 — 정원(`capacity`)까지만
+  제공합니다.
+- **`search_courses`는 사용자가 별도 터미널에서 로그인 헬퍼를 먼저 실행해야
+  동작합니다.** 세션이 만료되면 자동으로 재로그인하지 않고 안내 메시지만 돌려줍니다.
+- **E-class(cyber.mjc.ac.kr) 등 다른 로그인 필요 시스템은 범위 밖입니다.** 자격증명
+  취급 원칙은 [docs/design.md](docs/design.md) 8장에 정리했습니다.
 - 도서관 좌석 API는 비표준 포트를 쓰기 때문에 일부 제한된 네트워크(게스트 Wi-Fi 등)
   에서는 도달하지 못할 수 있습니다.
 
@@ -123,8 +155,9 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
 
 ```
 server.py        진입점. 각 툴 모듈의 register(mcp) 호출만 한다
-common/          http · parse · cache · errors · models (공통 레이어)
-tools/           library_seats.py, notices.py — 각각 register(mcp)를 노출
+common/          http · parse · cache · errors · models · session (공통 레이어)
+auth/            login_helper.py — 독립 CLI, 사용자가 직접 실행
+tools/           library_seats.py, notices.py, departments.py, course_search.py
 tests/fixtures/  실제 응답 원본
 docs/design.md   설계 문서
 ```
@@ -135,8 +168,8 @@ docs/design.md   설계 문서
 
 | GitHub | 역할 |
 |---|---|
-| [@Hyeon02-kr](https://github.com/Hyeon02-kr) | 팀장 · 공통 레이어 · 서버 통합 |
-| [@ghl0801](https://github.com/ghl0801) | 도서관 좌석 툴 |
-| [@mnzsuu](https://github.com/mnzsuu) | 공지 게시판 툴 |
+| [@Hyeon02-kr](https://github.com/Hyeon02-kr) | 팀장 · 공통 레이어 · 로그인 인프라 · 서버 통합 |
+| [@ghl0801](https://github.com/ghl0801) | 도서관 좌석 툴 · 학과 목록 툴 |
+| [@mnzsuu](https://github.com/mnzsuu) | 공지 게시판 툴 · 강좌 검색 툴 |
 
 2026년 명지전문대 캡스톤 경진대회 출품작.
