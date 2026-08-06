@@ -33,6 +33,7 @@ def _login_sugang() -> dict[str, str] | None:
     password = getpass.getpass("비밀번호: ")
 
     with httpx.Client(
+        base_url="https://sugang.mjc.ac.kr",
         timeout=TIMEOUT,
         follow_redirects=False,
         headers={
@@ -67,6 +68,22 @@ def _login_sugang() -> dict[str, str] | None:
 
         if code == "201":
             print(f"안내: {body.get('msg', '')}")
+
+        # 로그인 JS는 성공 시 location.href = uri + "?fake=" + Date.now()로 실제
+        # 페이지 이동을 한다. 그 이동이 SSO 티켓을 앱 세션으로 교환하는 리다이렉트
+        # 체인을 통과시키므로, 여기서도 따라가야 앱 세션 쿠키가 생긴다.
+        # 다른 요청은 3xx로 세션 만료를 판별하지만 이 요청만은 예외다.
+        uri = body.get("uri")
+        if uri:
+            try:
+                client.get(
+                    uri,
+                    params={"fake": str(int(time.time() * 1000))},
+                    follow_redirects=True,
+                )
+            except httpx.HTTPError as exc:
+                print(f"세션 확립 요청 실패: {type(exc).__name__}", file=sys.stderr)
+                return None
 
         cookies = dict(client.cookies)
         if not cookies:
