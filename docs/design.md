@@ -209,9 +209,16 @@ def search_courses(department_code: str, grade: int | None = None, keyword: str 
 ## 12. 남은 확인 사항
 
 1. 학사일정 스크래핑 구조 — 별도 세션에서 병렬 조사 중. 결과가 나오는 대로 툴을 추가하고, 어려우면 툴 2개로 확정한다 (7장)
-2. `robots.txt` 및 이용약관 내용
+2. ~~`robots.txt` 및 이용약관 내용~~ — **해결됨.** `www.mjc.ac.kr`은 `Allow: /`(전면 허용, 2026-08-06). `sugang.mjc.ac.kr`은 `robots.txt` 자체가 없음(2026-08-07). Tier 3 후보였던 `cyber.mjc.ac.kr`은 `Disallow: /`(전면 거부) — 이 때문에 Tier 3 진행을 보류했다(§13 참고).
 3. 시연장 네트워크에서 도서관 API 도달 여부
 4. 게시판 페이지네이션 파라미터 (범위 밖이지만 목록 개수 한계와 관련)
 5. ~~**(Tier 2)** 로그인 성공 시 `Set-Cookie`(JSESSIONID 추정)의 실체~~ — **해결됨(2026-08-07).** 팀장이 `auth/login_helper.py`를 실제로 실행해 확인 — `httpx.Client`의 쿠키 잭이 로그인 응답의 `Set-Cookie`를 정상적으로 반영하고, `%LOCALAPPDATA%\mjc-mcp\session_sugang.json`에 세션이 정상 저장됨. 쿠키의 정확한 필드명은 자격증명 인접 정보라 여기 기록하지 않는다.
-6. **(Tier 2)** 강좌구분코드(`pComboSugangCd`)의 전체 매핑 — 계획 문서엔 `10=교양 추정`만 있음. 학과코드와 같은 방식(드롭다운 스크래핑)으로 `search_courses` 구현 초반에 확보한다
+6. ~~**(Tier 2)** 강좌구분코드(`pComboSugangCd`)의 전체 매핑~~ — **해결됨(2026-08-07).** `10=교양, 30=전공, 60=원격강좌, 61=메타모포시스`. 학과코드와 함께 실제 로그인 세션으로 확보했다.
 7. **(Tier 2)** sugang 세션 수명이 관찰치로 30~40분이다. 데모에 포함한다면 시연 직전 로그인 헬퍼 재실행을 체크리스트에 넣는다
+
+## 13. Tier 3 조사 결과 (2026-08-07, 보류)
+
+원래 후보였던 두 시스템을 조사했으나 둘 다 보류했다.
+
+- **E-class(`cyber.mjc.ac.kr`)** — `robots.txt`가 `Disallow: /`로 전면 크롤링 거부. CSRF 토큰 요구(계획 문서 기존 기록)에 더해 정책적으로도 명시적 거부라 진행하지 않는다.
+- **커리어정보(`mpu.mjc.ac.kr`)** — `robots.txt`는 없지만, 응답 헤더 `X-Frame-Options: SAMEORIGIN ALLOW-FROM https://cyber.mjc.ac.kr`로 **cyber 안에 iframe으로 삽입되는 종속 시스템**임을 확인. `Content-Security-Policy`의 `connect-src`에 `wss://aws.huno.kr:4443`(제3자 도메인)이 있어 **외부 벤더의 화이트라벨 제품**으로 추정된다. 원래 계획 문서의 "ASP.NET 추정"은 근거를 찾지 못했다(관련 흔적 없음, 오히려 SPA 구조). cyber에 종속된 데다 제3자 서비스라 판단이 더 필요해 보류.
