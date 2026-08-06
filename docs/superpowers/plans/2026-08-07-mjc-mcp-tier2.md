@@ -39,19 +39,59 @@ txtUserID=<학번>&txtPwd=<비밀번호>
 ```
 응답 JSON: `{"code": "200|201", "msg": "...", "token": "...", "uri": "..."}`. `code`가 `"200"` 또는 `"201"`이면 성공(201은 비밀번호 만료 임박 등 안내 있음). 그 외는 실패, `msg`가 실패 사유. `token` 필드는 프론트에서 실사용 여부 불확실 — 무시한다. **세션 확립은 이 응답에 딸려오는 `Set-Cookie`로 이루어지는 것으로 추정되나, 실제 로그인 성공 시점에 응답 헤더로 확정된 적은 없다.** Task 1의 첫 스텝에서 확정한다.
 
-**강좌 검색**
+**강좌 검색** (2026-08-07, 팀장이 본인 계정으로 실제 로그인 후 Playwright로 실측 — 아래는 전부 [확인])
 ```
 POST https://sugang.mjc.ac.kr/core/d/lectList?fake=<ms timestamp>
 Content-Type: application/x-www-form-urlencoded; charset=UTF-8
 X-Requested-With: XMLHttpRequest
-Referer: https://sugang.mjc.ac.kr/core/home
-Cookie: <로그인 세션 쿠키>
 
-pCourseCd=<강좌구분코드>&pSugangGbn=S&pSelMetaA=&pSelMetaB=&pSelMetaUnionA=&pSelMetaUnionB=&pSelMetaUnionC=&pParams=&pComboSugangCd=<강좌구분코드>&pComboGrade=<학년>&pComboClsMajCd=<학과코드>&pSearchNm=<검색어>
+pCourseCd=&pSugangGbn=S&pSelMetaA=&pSelMetaB=&pSelMetaUnionA=&pSelMetaUnionB=&pSelMetaUnionC=&pParams=&pComboSugangCd=<강좌구분코드>&pComboGrade=<학년>&pComboClsMajCd=<학과코드>&pSearchNm=<검색어>
 ```
-응답은 JSON(`rows` 배열). `fake=` 파라미터 없으면 500(status 999) 확정 필수. 확인된 학과코드 예시: `pComboClsMajCd=1201001`(정보통신공학과). **전체 매핑표는 없다 — Task 2가 조사한다.** `pComboSugangCd=10`은 교양으로 추정될 뿐 확정 아님 — **Task 3이 조사한다.**
+쿠키는 브라우저가 same-origin으로 자동 첨부했다(별도 `Referer` 헤더 없이도 200 성공). `fake=` 파라미터 없으면 500(status 999) 확정 필수(Tier 1 때부터 알려진 사실).
 
-**공개 페이지로는 학과/강좌구분 드롭다운을 볼 수 없음** (2026-08-07 재확인). `https://sugang.mjc.ac.kr/`는 JS로 `/loginPage`에 iframe POST하는 셸(shell) 페이지이고, `curl`로 직접 접근하면 "한 개의 브라우저탭만 사용가능" 경고 페이지가 뜬다(세션/탭 상태를 추적하는 앱이라 단순 GET/POST로는 못 뚫는다). **즉 학과·강좌구분 드롭다운 구조 조사는 실제 로그인 세션이 있어야만 가능** — Task 2, 3은 각자 로그인 헬퍼를 먼저 실행한 뒤 착수한다.
+**학과코드(`pComboClsMajCd`) — 이전 계획의 예시가 틀렸다.** `1201001`은 정보통신공학과가 아니라 **"교양"**이었다(로그인 시 기본 선택되어 있던 값을 캡처해서 생긴 착오). 실측으로 전체 36개를 확보했다:
+
+```
+1200205=AI게임소프트웨어학과   1200509=AI미디어디자인학과      1200301=경영학과
+1200305=공공행정서비스과       1201001=교양                    1200102=기계공학과
+1200207=드론정보공학과         1200406=문예창작과              1201402=보건의료정보과
+1200303=부동산경영과           1200505=뷰티매니지먼트과메이크업·네일전공
+1200508=뷰티매니지먼트과방송스타일디렉터전공  1200506=뷰티매니지먼트과스킨케어메디컬코스메틱전공
+1200507=뷰티매니지먼트과헤어디자인전공        1200304=사회복지과   1200603=사회체육과
+1200101=산업경영공학과         1200501=산업디자인학과          1200302=세무회계과
+1200602=실용음악과             1200604=연극영상학과            1200404=유아교육학과
+1200403=일본어과               1200201=전기공학과              1200202=전자공학과
+1200204=정보통신공학과         1200402=중국어비즈니스과        1200306=지적공간정보학과
+1200405=청소년교육상담과       1200503=커뮤니케이션디자인과    1200203=컴퓨터공학과
+1200206=컴퓨터보안공학과       1200103=토목공학과              1201301=통합전공
+1200502=패션·리빙디자인과      1200409=항공서비스과
+```
+
+**강좌구분코드(`pComboSugangCd`)** — 확정: `10=교양, 30=전공, 60=원격강좌, 61=메타모포시스`.
+
+**학년(`pComboGrade`)** — 확정: `1`~`4`, 단순 정수 문자열.
+
+**응답 JSON 실제 필드명 — 이전 계획의 추정(과목코드/과목명/교수명 등 한글 키)은 전부 틀렸다.** 실제 `rows` 배열 원소:
+
+| 실제 키 | 의미 | 예시 |
+|---|---|---|
+| `subjectCd` | 과목코드 | `"J04661"` |
+| `subjectNmKor` | 과목명 | `"캡스톤디자인"` |
+| `nm` | 담당교수명 | `"정필성"` |
+| `bunban` | 분반 | `"101"` |
+| `isuCdNm` | 이수구분명 | `"전공과정"` |
+| `credit` | 학점 | `"4"` (문자열) |
+| `grade` | 학년 | `"3"` (문자열) |
+| `time` | 강의시간+강의실. `<br>`로 여러 교시 구분, 각 교시에 `( 강의실 )` 포함 | `"수 09:00 - 09:50 ( 공803 ) <br> 수 10:00 - 10:50 ( 공803 )"` |
+| `limitNum` | 정원 | `"40"` |
+| `clsMajCd` | 학과코드 (요청에 넣은 값 그대로 돌아옴) | `"1200204"` |
+| `memberNo` | 교수 내부 사번(6자리) — **개인정보, fixture에 저장 금지·마스킹 필수** | `"213434"` |
+
+**`inManNum`/`outManNum`/`sugangNum`은 실시간 신청 인원이 아니다.** 화면 문구("신청인원은 실시간으로 조회되지 않습니다")와 일치 — `sugangNum` 값 자체가 문자열 `"조회하세요"`로 온다. 실시간 신청 인원은 과목별로 별도 새로고침 호출이 필요한 것으로 보이며, 이번 Tier 2 범위에서는 다루지 않는다(`search_courses`는 정원까지만 제공).
+
+**학과/강좌구분 드롭다운은 별도 GET 엔드포인트가 없다.** 로그인 후 화면 안에서 JS 라우팅(SPA 방식)으로 "전체조회" 메뉴를 눌러야 나타나며, 페이지 소스나 별도 URL로 조회되지 않는다. `curl`로 루트에 접근하면 "한 개의 브라우저탭만 사용가능" 경고만 뜬다(세션/탭 상태를 실제 브라우저처럼 유지해야 통과된다).
+
+**→ 이 사실이 Task 2의 설계를 바꾼다.** 학과 목록은 요청마다 조회할 대상이 아니라 위에 있는 것처럼 **거의 안 바뀌는 정적 데이터**이므로, 매번 인증된 스크래핑을 하는 대신 **하드코딩된 매핑을 코드에 직접 넣는다.** 부수 이득으로 `list_departments`는 로그인이 전혀 필요 없는 툴이 된다 — Tier 2에서 인증이 필요한 건 `search_courses`뿐이다.
 
 ## File Structure
 
@@ -60,12 +100,12 @@ pCourseCd=<강좌구분코드>&pSugangGbn=S&pSelMetaA=&pSelMetaB=&pSelMetaUnionA
 | `common/http.py` (수정) | `fetch_authenticated()` 함수 추가 — 세션 쿠키를 실어 보내고 status/redirect를 그대로 노출 | Task 1 |
 | `common/session.py` (신규) | 세션 파일 read/write, `require_session()`, `SessionRequiredError`, `require_active_session()` | Task 1 |
 | `auth/login_helper.py` (신규) | 독립 CLI. 사용자가 직접 실행 | Task 1 |
-| `tools/departments.py` (신규) | `list_departments()` + `register(mcp)` | Task 2 |
-| `tools/course_search.py` (신규) | `search_courses()` + `register(mcp)` | Task 3 |
+| `tools/departments.py` (신규) | 학과 코드 정적 매핑 + `list_departments()` + `register(mcp)`. **로그인 불필요** | Task 2 |
+| `tools/course_search.py` (신규) | `search_courses()` + `register(mcp)`. 로그인 필요 | Task 3 |
 | `common/models.py` (수정) | `Department`, `DepartmentList`, `CourseSummary`, `CourseList` 모델 추가 | Task 2, 3 (각자 자기 모델만 추가 — 충돌 시 먼저 머지된 쪽 기준으로 rebase) |
 | `server.py` (수정) | `departments.register(mcp)`, `course_search.register(mcp)` 호출 추가 | Task 4(통합, 팀장) |
 
-**병렬 작업 안내:** Task 1(로그인 기반)이 끝나 `tier2/merged`에 푸시되면, Task 2와 Task 3은 서로 다른 파일이라 병렬로 진행한다. 둘 다 `common/models.py`를 수정하므로 — 각자 자기 모델 클래스만 파일 끝에 추가하고, 먼저 PR이 머지된 쪽을 기준으로 나중 PR이 `git fetch && git rebase origin/tier2/merged`로 반영한다. Task 4는 둘 다 머지된 뒤 팀장이 진행한다.
+**병렬 작업 안내:** Task 1(로그인 기반)이 끝나 `tier2/merged`에 푸시되면, Task 2와 Task 3은 서로 다른 파일이라 병렬로 진행한다. **Task 2는 사실 Task 1을 기다릴 필요도 없다** — 정적 데이터라 로그인/세션 인프라에 의존하지 않는다. 팀원이 먼저 시작해도 된다. 둘 다 `common/models.py`를 수정하므로 — 각자 자기 모델 클래스만 파일 끝에 추가하고, 먼저 PR이 머지된 쪽을 기준으로 나중 PR이 `git fetch && git rebase origin/tier2/merged`로 반영한다. Task 4는 둘 다 머지된 뒤 팀장이 진행한다.
 
 ---
 
@@ -511,96 +551,73 @@ git push origin tier2/merged
 
 ### Task 2: 학과 목록 조회 (list_departments)
 
-**담당:** 팀원 A. `tier2/<이름>` 브랜치에서 진행 후 `tier2/merged`로 PR.
+**담당:** 팀원 A. `tier2/<이름>` 브랜치에서 진행 후 `tier2/merged`로 PR. **Task 1을 기다릴 필요 없이 바로 시작 가능** — 로그인/세션과 무관한 정적 데이터다.
 
-**착수 전:** `.venv/Scripts/python auth/login_helper.py sugang`을 먼저 실행해 유효한 세션을 확보한다 (본인 계정으로).
+학과 드롭다운은 로그인 후 화면 안에서 JS 라우팅으로만 나타나고 별도 GET 엔드포인트가 없다는 게 실측으로 확인됐다("검증된 사실" 참고). 학과 코드는 학기마다 거의 바뀌지 않는 정적 데이터이므로, 매번 인증된 스크래핑을 하는 대신 **하드코딩된 매핑을 코드에 직접 넣는다.** 덕분에 이 툴은 로그인이 전혀 필요 없다.
 
 **Files:**
 - Create: `tools/departments.py`
 - Modify: `common/models.py` — `Department`, `DepartmentList` 추가
 - Test: `tests/test_departments.py`
-- Test fixture: `tests/fixtures/departments_page.html` (실제 응답, **인증 필요 페이지이므로 학번·이름 등 개인 식별 정보가 섞여 있지 않은지 직접 확인 후 저장**)
 
 **Interfaces:**
-- Consumes: `common.session.require_session`, `common.session.require_active_session`, `common.http.fetch_authenticated`, `common.parse.parse_html`, `common.errors.ParseError`
+- Consumes: 없음 (정적 데이터, 다른 모듈에 의존하지 않는다)
 - Produces:
   - `common.models.Department(code: str, name: str)`
   - `common.models.DepartmentList(departments: list[Department])`
-  - `tools.departments.parse_departments(content: bytes) -> list[Department]`
+  - `tools.departments.DEPARTMENTS: dict[str, str]` (code → name, `search_courses`가 `department_code` 유효성 검사에 재사용할 수 있음)
   - `tools.departments.list_departments() -> DepartmentList`
   - `tools.departments.register(mcp) -> None`
 
-- [ ] **Step 1: 실제 구조 조사 (Claude가 아니라 담당자가 로그인된 브라우저로 직접)**
+- [ ] **Step 1: 실패하는 테스트 작성**
 
-로그인 헬퍼 실행 후, **브라우저**로 `https://sugang.mjc.ac.kr/`에 로그인해서 강좌 검색 화면까지 들어간다. 개발자도구 Network 탭에서 학과 드롭다운을 채우는 요청을 찾는다(페이지 로드 시 호출되는 GET/POST일 가능성이 높다 — sugang은 지금까지 관찰된 패턴상 대부분의 데이터 요청이 `fake=<timestamp>` 파라미터를 필수로 요구했다). 다음을 확정한다.
-
-1. 학과 목록을 채우는 요청의 정확한 URL과 메소드
-2. 응답이 HTML(`<option>` 태그)인지 JSON인지
-3. 학과코드와 학과명이 어느 필드/속성에 있는지
-
-이 정보로 아래 Step들의 `DEPT_URL`과 파싱 로직을 채운다. **curl로 재현할 수 있으면(즉 세션 쿠키만으로 브라우저 없이도 같은 응답이 오면) 그 응답을 fixture로 저장한다.** 안 되면(예: 매 요청마다 바뀌는 토큰이 더 필요하면) 그 사실을 PR 설명에 적고 팀장에게 알린다.
-
-- [ ] **Step 2: fixture 저장**
-
-Step 1에서 확정한 URL로 실제 응답을 받는다(개인정보 혼입 여부 확인 후 저장 — Task 5/6 리뷰에서 반복 강조된 원칙이다).
-
-```bash
-.venv/Scripts/python -c "
-from common.session import require_session
-from common.http import fetch_authenticated
-from pathlib import Path
-
-cookies = require_session('sugang')
-resp = fetch_authenticated('<Step 1에서 확정한 URL>', cookies=cookies)
-Path('tests/fixtures/departments_page.html').write_bytes(resp.content)
-print('저장 완료, status:', resp.status_code)
-"
-```
-
-저장 후 **직접 파일을 열어** 학번·이름·전화번호 등이 섞여 있지 않은지 확인한다. 섞여 있으면 그 필드를 마스킹하고 저장한다.
-
-- [ ] **Step 3: 실패하는 테스트 작성**
-
-`tests/test_departments.py` (아래는 응답이 HTML `<option>` 태그라고 가정한 예시 — Step 1에서 JSON으로 확인되면 그에 맞게 고친다. 학과코드 예시 `1201001`=정보통신공학과는 계획 문서로 검증되어 있으므로 fixture에 반드시 포함되어야 한다):
+`tests/test_departments.py`:
 
 ```python
-from pathlib import Path
-
 import pytest
 
-from common.errors import ParseError
-from tools.departments import parse_departments
-
-FIXTURE = Path(__file__).parent / "fixtures" / "departments_page.html"
-
-
-def test_parses_multiple_departments():
-    depts = parse_departments(FIXTURE.read_bytes())
-    assert len(depts) > 1
+from tools.departments import DEPARTMENTS, list_departments
 
 
 def test_known_department_present():
-    depts = {d.code: d.name for d in parse_departments(FIXTURE.read_bytes())}
-    assert depts.get("1201001") == "정보통신공학과"
+    assert DEPARTMENTS.get("1200204") == "정보통신공학과"
 
 
-def test_no_korean_mojibake():
-    depts = parse_departments(FIXTURE.read_bytes())
-    joined = "".join(d.name for d in depts)
-    assert "�" not in joined
+def test_general_education_present():
+    assert DEPARTMENTS.get("1201001") == "교양"
 
 
-def test_raises_parse_error_when_structure_missing():
-    with pytest.raises(ParseError):
-        parse_departments(b"<html><body>no dropdown here</body></html>")
+def test_at_least_thirty_departments():
+    assert len(DEPARTMENTS) >= 30
+
+
+def test_no_duplicate_codes():
+    # dict 자체가 키 중복을 허용하지 않으므로, 원본 리스트 정의 단계에서
+    # 중복이 있었다면 조용히 마지막 값으로 덮어써졌을 수 있다. 이를 잡아낸다.
+    assert len(DEPARTMENTS) == len(set(DEPARTMENTS))
+
+
+def test_list_departments_returns_all():
+    result = list_departments()
+    assert len(result.departments) == len(DEPARTMENTS)
+    names = {d.name for d in result.departments}
+    assert "정보통신공학과" in names
+
+
+def test_list_departments_no_login_required():
+    """이 함수를 호출하는 데 세션/쿠키 인자가 전혀 없어야 한다."""
+    import inspect
+
+    sig = inspect.signature(list_departments)
+    assert len(sig.parameters) == 0
 ```
 
-- [ ] **Step 4: 테스트가 실패하는지 확인**
+- [ ] **Step 2: 테스트가 실패하는지 확인**
 
 Run: `.venv/Scripts/python -m pytest tests/test_departments.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'tools.departments'`
 
-- [ ] **Step 5: `common/models.py`에 모델 추가**
+- [ ] **Step 3: `common/models.py`에 모델 추가**
 
 파일 끝에 추가한다 (기존 클래스는 건드리지 않는다):
 
@@ -614,50 +631,72 @@ class DepartmentList(BaseModel):
     departments: list[Department] = Field(description="sugang에 등록된 전체 학과 목록")
 ```
 
-- [ ] **Step 6: `tools/departments.py` 구현**
+- [ ] **Step 4: `tools/departments.py` 구현**
 
-Step 1에서 확정한 실제 URL/구조로 아래 틀을 채운다. 아래는 `<select>` 안 `<option value="코드">이름</option>` 구조라고 가정한 예시다.
+2026-08-07 실측으로 확인된 전체 36개 매핑을 그대로 쓴다(위 "검증된 사실" 표와 동일 — 아래 코드가 원본이다).
 
 ```python
-"""sugang 학과 목록 조회.
+"""sugang 학과 목록.
 
-로그인이 필요하다. search_courses가 요구하는 department_code를 사람이
-읽을 수 있는 이름과 함께 제공해, 내부 코드를 AI에게 직접 외우게 하지 않는다.
+학과 코드는 학기마다 거의 바뀌지 않는 정적 데이터라, 매번 스크래핑하는 대신
+하드코딩한다(2026-08-07 실제 로그인 세션으로 학과 드롭다운을 직접 읽어 확보).
+이 덕분에 이 툴은 로그인이 필요 없다 — search_courses만 인증이 필요하다.
+
+매 학기 개편이 있으면 이 표를 갱신해야 한다는 뜻이기도 하다.
 """
 
 from mcp.types import ToolAnnotations
 
-from common.errors import ParseError
-from common.http import fetch_authenticated
 from common.models import Department, DepartmentList
-from common.parse import parse_html
-from common.session import require_active_session, require_session
 
-DEPT_URL = "https://sugang.mjc.ac.kr/<Step 1에서 확정>"
-
-
-def parse_departments(content: bytes) -> list[Department]:
-    soup = parse_html(content)
-    options = soup.select("select#comboClsMajCd option")  # 실제 selector로 교체
-    departments = [
-        Department(code=opt.get("value", "").strip(), name=opt.get_text(strip=True))
-        for opt in options
-        if opt.get("value", "").strip()
-    ]
-    if not departments:
-        raise ParseError("학과 목록")
-    return departments
+DEPARTMENTS: dict[str, str] = {
+    "1200205": "AI게임소프트웨어학과",
+    "1200509": "AI미디어디자인학과",
+    "1200301": "경영학과",
+    "1200305": "공공행정서비스과",
+    "1201001": "교양",
+    "1200102": "기계공학과",
+    "1200207": "드론정보공학과",
+    "1200406": "문예창작과",
+    "1201402": "보건의료정보과",
+    "1200303": "부동산경영과",
+    "1200505": "뷰티매니지먼트과메이크업·네일전공",
+    "1200508": "뷰티매니지먼트과방송스타일디렉터전공",
+    "1200506": "뷰티매니지먼트과스킨케어메디컬코스메틱전공",
+    "1200507": "뷰티매니지먼트과헤어디자인전공",
+    "1200304": "사회복지과",
+    "1200603": "사회체육과",
+    "1200101": "산업경영공학과",
+    "1200501": "산업디자인학과",
+    "1200302": "세무회계과",
+    "1200602": "실용음악과",
+    "1200604": "연극영상학과",
+    "1200404": "유아교육학과",
+    "1200403": "일본어과",
+    "1200201": "전기공학과",
+    "1200202": "전자공학과",
+    "1200204": "정보통신공학과",
+    "1200402": "중국어비즈니스과",
+    "1200306": "지적공간정보학과",
+    "1200405": "청소년교육상담과",
+    "1200503": "커뮤니케이션디자인과",
+    "1200203": "컴퓨터공학과",
+    "1200206": "컴퓨터보안공학과",
+    "1200103": "토목공학과",
+    "1201301": "통합전공",
+    "1200502": "패션·리빙디자인과",
+    "1200409": "항공서비스과",
+}
 
 
 def list_departments() -> DepartmentList:
-    """sugang에 등록된 학과 목록을 조회한다.
+    """sugang에 등록된 학과 목록을 조회한다. 로그인이 필요 없다.
 
     반환된 각 항목의 code를 search_courses의 department_code에 그대로 넘긴다.
     """
-    cookies = require_session("sugang")
-    response = fetch_authenticated(DEPT_URL, cookies=cookies)
-    require_active_session(response, "sugang")
-    return DepartmentList(departments=parse_departments(response.content))
+    return DepartmentList(
+        departments=[Department(code=c, name=n) for c, n in DEPARTMENTS.items()]
+    )
 
 
 def register(mcp) -> None:
@@ -666,33 +705,33 @@ def register(mcp) -> None:
     )(list_departments)
 ```
 
-- [ ] **Step 7: 테스트 통과 확인**
+- [ ] **Step 5: 테스트 통과 확인**
 
 Run: `.venv/Scripts/python -m pytest tests/test_departments.py -v`
-Expected: PASS (4 passed)
+Expected: PASS (6 passed)
 
-- [ ] **Step 8: 실제 호출로 수동 확인**
+- [ ] **Step 6: 실제 호출로 수동 확인**
 
 ```bash
 .venv/Scripts/python -c "
 from tools.departments import list_departments
 r = list_departments()
 print(len(r.departments), '개 학과')
-print(r.departments[:3])
+print([d for d in r.departments if d.name == '정보통신공학과'])
 "
 ```
 
-Expected: 실제 학과 목록이 나온다. `정보통신공학과`가 포함되어 있어야 한다.
+Expected: `36개 학과`, 정보통신공학과가 `code='1200204'`로 나온다.
 
-- [ ] **Step 9: 커밋 및 PR**
+- [ ] **Step 7: 커밋 및 PR**
 
 ```bash
-git add tools/departments.py common/models.py tests/test_departments.py tests/fixtures/departments_page.html
+git add tools/departments.py common/models.py tests/test_departments.py
 git commit -m "feat: 학과 목록 조회 툴 추가
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 git push -u origin tier2/<이름>
-gh pr create --base tier2/merged --head tier2/<이름> --title "feat: 학과 목록 조회 툴 추가" --body "Task 2 구현"
+gh pr create --base tier2/merged --head tier2/<이름> --title "feat: 학과 목록 조회 툴 추가" --body "Task 2 구현. 로그인 불필요 — 정적 데이터."
 ```
 
 ---
@@ -703,59 +742,27 @@ gh pr create --base tier2/merged --head tier2/<이름> --title "feat: 학과 목
 
 **착수 전:** `.venv/Scripts/python auth/login_helper.py sugang`을 먼저 실행해 유효한 세션을 확보한다.
 
+**fixture는 이미 확보되어 있다.** `tests/fixtures/lect_list_response.json`은 2026-08-07 팀장이 실제 로그인 세션으로 `search_courses(department_code="1200204", course_type="major", grade=3)`에 해당하는 요청(원시 파라미터로는 `pComboClsMajCd=1200204&pComboSugangCd=30&pComboGrade=3`)을 1회 호출해 받은 실제 응답이다(강좌 3건: 캡스톤디자인/ICT최신기술/iOS프로그래밍고급). 교수 사번(`memberNo`)은 개인정보라 `MASKED1`~`MASKED3`로 마스킹했다. **이 fixture는 새로 받을 필요 없다** — Step 1부터 바로 시작한다.
+
 **Files:**
 - Create: `tools/course_search.py`
 - Modify: `common/models.py` — `CourseSummary`, `CourseList` 추가
 - Test: `tests/test_course_search.py`
-- Test fixture: `tests/fixtures/lect_list_response.json`
+- Test fixture: `tests/fixtures/lect_list_response.json` (이미 존재)
 
 **Interfaces:**
-- Consumes: `common.session.require_session`, `common.session.require_active_session`, `common.http.fetch_authenticated`, `common.errors.ParseError`
+- Consumes: `common.session.require_session`, `common.session.require_active_session`, `common.http.fetch_authenticated`, `common.errors.ParseError`, `tools.departments.DEPARTMENTS` (department_code 유효성 검사용)
 - Produces:
-  - `common.models.CourseSummary(course_code, name, professor, schedule, room, capacity, enrolled)`
+  - `common.models.CourseSummary(course_code, name, professor, category, credit, grade, schedule, capacity)`
   - `common.models.CourseList(courses: list[CourseSummary])`
+  - `tools.course_search.CourseType = Literal["general", "major", "remote", "metamorphosis"]`
   - `tools.course_search.parse_courses(content: bytes) -> list[CourseSummary]`
-  - `tools.course_search.search_courses(department_code: str, grade: int | None = None, keyword: str = "") -> CourseList`
+  - `tools.course_search.search_courses(department_code: str, course_type: CourseType = "major", grade: int | None = None, keyword: str = "") -> CourseList`
   - `tools.course_search.register(mcp) -> None`
 
-- [ ] **Step 1: 강좌구분코드(`pComboSugangCd`) 실제 매핑 조사**
+- [ ] **Step 1: 실패하는 테스트 작성**
 
-Task 2의 Step 1과 같은 방식(로그인 후 브라우저 개발자도구)으로 "강좌구분" 드롭다운(교양/전공/전공심화 등)의 `<option>` 값을 확인한다. 계획 문서의 `10=교양 추정`이 맞는지, 다른 값(전공 등)은 무엇인지 확정한다. 이번 구현에서는 **전체 매핑을 다 만들 필요는 없다** — `search_courses`가 자체 파라미터로 노출하지 않고 항상 "전체"에 해당하는 값(있다면)을 쓰거나, 확정된 값 중 흔히 쓰는 한두 개만 노출한다. 시간이 부족하면 이 조사는 15분을 넘기지 않고, 확인된 만큼만 반영한다.
-
-- [ ] **Step 2: fixture 확보**
-
-실제 로그인 세션으로 `lectList`를 1회 호출해 응답을 저장한다.
-
-```bash
-.venv/Scripts/python -c "
-from common.session import require_session
-from common.http import fetch_authenticated
-from pathlib import Path
-import time
-
-cookies = require_session('sugang')
-resp = fetch_authenticated(
-    'https://sugang.mjc.ac.kr/core/d/lectList',
-    cookies=cookies,
-    method='POST',
-    params={'fake': str(int(time.time() * 1000))},
-    data={
-        'pCourseCd': '', 'pSugangGbn': 'S', 'pSelMetaA': '', 'pSelMetaB': '',
-        'pSelMetaUnionA': '', 'pSelMetaUnionB': '', 'pSelMetaUnionC': '',
-        'pParams': '', 'pComboSugangCd': '10', 'pComboGrade': '1',
-        'pComboClsMajCd': '1201001', 'pSearchNm': '',
-    },
-)
-Path('tests/fixtures/lect_list_response.json').write_bytes(resp.content)
-print('저장 완료, status:', resp.status_code)
-"
-```
-
-저장 후 파일을 열어 **학번·이름 등 개인 식별 정보가 섞여 있지 않은지 확인한다.** 강좌 목록 응답이라 보통 교수명/강의실/시간표뿐이겠지만, 수강 인원 관련 필드에 학생 개인정보가 섞여 있는 경우가 있으므로 확인 후 저장한다.
-
-- [ ] **Step 3: 실패하는 테스트 작성**
-
-`tests/test_course_search.py` — 아래는 응답이 `{"rows": [...]}` 형태의 JSON이라는 계획 문서 서술을 따른 예시다. 실제 필드명은 fixture를 열어보고 Step 4 이전에 맞게 고친다.
+`tests/test_course_search.py` — fixture의 실제 필드명(`subjectCd`, `subjectNmKor`, `nm`, `bunban`, `isuCdNm`, `credit`, `grade`, `time`, `limitNum`)을 그대로 쓴다("검증된 사실" 참고).
 
 ```python
 import json
@@ -769,24 +776,43 @@ from tools.course_search import parse_courses
 FIXTURE = Path(__file__).parent / "fixtures" / "lect_list_response.json"
 
 
-def test_parses_at_least_one_course():
+def test_parses_three_courses():
     courses = parse_courses(FIXTURE.read_bytes())
-    assert len(courses) > 0
+    assert len(courses) == 3
 
 
 def test_course_has_required_fields():
     courses = parse_courses(FIXTURE.read_bytes())
     first = courses[0]
-    assert first.course_code
-    assert first.name
-    assert isinstance(first.capacity, int)
-    assert isinstance(first.enrolled, int)
+    assert first.course_code == "J04661"
+    assert first.name == "캡스톤디자인"
+    assert first.professor == "정필성"
+    assert first.capacity == 40
+    assert first.credit == 4
+    assert first.grade == 3
+    assert first.category == "전공과정"
+
+
+def test_schedule_converts_br_to_newline_and_keeps_room():
+    courses = parse_courses(FIXTURE.read_bytes())
+    first = courses[0]
+    assert "\n" in first.schedule
+    assert "공803" in first.schedule
+    assert "<br>" not in first.schedule
 
 
 def test_no_korean_mojibake():
     courses = parse_courses(FIXTURE.read_bytes())
     joined = "".join(c.name + c.professor for c in courses)
     assert "�" not in joined
+
+
+def test_professor_staff_number_never_appears():
+    """memberNo(교수 사번)는 개인정보라 CourseSummary에 절대 담지 않는다."""
+    courses = parse_courses(FIXTURE.read_bytes())
+    for course in courses:
+        assert not hasattr(course, "member_no")
+        assert not hasattr(course, "memberNo")
 
 
 def test_raises_parse_error_on_malformed_json():
@@ -799,43 +825,48 @@ def test_raises_parse_error_when_rows_missing():
         parse_courses(json.dumps({"other": []}).encode())
 ```
 
-- [ ] **Step 4: 테스트가 실패하는지 확인**
+- [ ] **Step 2: 테스트가 실패하는지 확인**
 
 Run: `.venv/Scripts/python -m pytest tests/test_course_search.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'tools.course_search'`
 
-- [ ] **Step 5: `common/models.py`에 모델 추가**
+- [ ] **Step 3: `common/models.py`에 모델 추가**
 
-파일 끝에 추가 (Task 2가 먼저 머지됐다면 그 아래에 이어 붙인다):
+파일 끝에 추가 (Task 2가 먼저 머지됐다면 그 아래에 이어 붙인다). `room`과 `enrolled`는 넣지 않는다 — `room`은 `schedule` 문자열 안에 이미 포함되고, 실시간 신청 인원(`enrolled`)은 이 응답에 없다("검증된 사실" 참고).
 
 ```python
 class CourseSummary(BaseModel):
     course_code: str = Field(description="강좌 코드")
     name: str = Field(description="과목명")
-    professor: str = Field(description="담당 교수")
-    schedule: str = Field(description="강의 시간")
-    room: str = Field(description="강의실")
-    capacity: int = Field(description="정원")
-    enrolled: int = Field(description="현재 수강신청 인원")
+    professor: str = Field(description="담당 교수명")
+    category: str = Field(description="이수구분 (예: 전공과정, 교양필수)")
+    credit: int = Field(description="학점")
+    grade: int = Field(description="대상 학년")
+    schedule: str = Field(description="강의 시간과 강의실. 교시마다 줄바꿈으로 구분")
+    capacity: int = Field(description="정원. 실시간 신청 인원은 제공하지 않는다")
 
 
 class CourseList(BaseModel):
     courses: list[CourseSummary] = Field(description="검색된 개설 강좌 목록")
 ```
 
-- [ ] **Step 6: `tools/course_search.py` 구현**
-
-실제 JSON 필드명은 fixture를 열어보고 정확한 키로 교체한다. 아래는 계획 문서 서술 기준 뼈대다.
+- [ ] **Step 4: `tools/course_search.py` 구현**
 
 ```python
 """sugang 개설 강좌 검색.
 
 로그인이 필요하다. department_code는 list_departments가 돌려준 값을
 그대로 받는다 — 내부 코드를 AI가 직접 조합해 만들지 않는다.
+
+실제 응답 필드명(subjectCd, subjectNmKor, nm 등)은 2026-08-07 실제 로그인
+세션으로 확인했다. memberNo(교수 사번)는 개인정보라 절대 CourseSummary에
+담지 않는다.
 """
 
 import json
+import re
 import time
+from typing import Literal
 
 from mcp.types import ToolAnnotations
 
@@ -845,6 +876,24 @@ from common.models import CourseList, CourseSummary
 from common.session import require_active_session, require_session
 
 LECT_LIST_URL = "https://sugang.mjc.ac.kr/core/d/lectList"
+
+# 사람이 읽는 이름 -> sugang 내부 강좌구분코드. 2026-08-07 실측으로 확정.
+CourseType = Literal["general", "major", "remote", "metamorphosis"]
+_COURSE_TYPE_CODES: dict[str, str] = {
+    "general": "10",
+    "major": "30",
+    "remote": "60",
+    "metamorphosis": "61",
+}
+
+_BR_PATTERN = re.compile(r"\s*<br>\s*")
+
+
+def _int_or_zero(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def parse_courses(content: bytes) -> list[CourseSummary]:
@@ -859,25 +908,31 @@ def parse_courses(content: bytes) -> list[CourseSummary]:
 
     return [
         CourseSummary(
-            course_code=str(row.get("과목코드", "")),   # 실제 키로 교체
-            name=str(row.get("과목명", "")),
-            professor=str(row.get("교수명", "")),
-            schedule=str(row.get("시간표", "")),
-            room=str(row.get("강의실", "")),
-            capacity=int(row.get("정원", 0) or 0),
-            enrolled=int(row.get("신청인원", 0) or 0),
+            course_code=str(row.get("subjectCd", "")),
+            name=str(row.get("subjectNmKor", "")),
+            professor=str(row.get("nm", "")),
+            category=str(row.get("isuCdNm", "")),
+            credit=_int_or_zero(row.get("credit")),
+            grade=_int_or_zero(row.get("grade")),
+            schedule=_BR_PATTERN.sub("\n", str(row.get("time", ""))).strip(),
+            capacity=_int_or_zero(row.get("limitNum")),
         )
         for row in rows
     ]
 
 
 def search_courses(
-    department_code: str, grade: int | None = None, keyword: str = ""
+    department_code: str,
+    course_type: CourseType = "major",
+    grade: int | None = None,
+    keyword: str = "",
 ) -> CourseList:
     """개설 강좌를 검색한다.
 
     department_code는 list_departments가 돌려준 값을 그대로 넘길 것.
+    course_type: general(교양), major(전공), remote(원격강좌), metamorphosis(메타모포시스)
     grade를 생략하면 전 학년, keyword를 생략하면 학과 전체 강좌를 검색한다.
+    실시간 신청 인원은 제공하지 않는다 — capacity(정원)만 제공한다.
     """
     cookies = require_session("sugang")
     response = fetch_authenticated(
@@ -891,7 +946,7 @@ def search_courses(
             "pSelMetaA": "", "pSelMetaB": "",
             "pSelMetaUnionA": "", "pSelMetaUnionB": "", "pSelMetaUnionC": "",
             "pParams": "",
-            "pComboSugangCd": "10",  # Task 3 Step 1 결과로 교체
+            "pComboSugangCd": _COURSE_TYPE_CODES[course_type],
             "pComboGrade": str(grade) if grade is not None else "",
             "pComboClsMajCd": department_code,
             "pSearchNm": keyword,
@@ -907,25 +962,26 @@ def register(mcp) -> None:
     )(search_courses)
 ```
 
-- [ ] **Step 7: 테스트 통과 확인**
+- [ ] **Step 5: 테스트 통과 확인**
 
 Run: `.venv/Scripts/python -m pytest tests/test_course_search.py -v`
-Expected: PASS (5 passed)
+Expected: PASS (7 passed)
 
-- [ ] **Step 8: 실제 호출로 수동 확인**
+- [ ] **Step 6: 실제 호출로 수동 확인**
 
 ```bash
 .venv/Scripts/python -c "
 from tools.course_search import search_courses
-r = search_courses(department_code='1201001')
+r = search_courses(department_code='1200204', course_type='major', grade=3)
 print(len(r.courses), '개 강좌')
-print(r.courses[:2])
+for c in r.courses[:3]:
+    print(c.name, '|', c.professor, '|', c.credit, '학점 |', c.capacity, '명')
 "
 ```
 
-Expected: 정보통신공학과 실제 개설 강좌가 나온다.
+Expected: 정보통신공학과 3학년 전공 강좌가 실제로 나온다.
 
-- [ ] **Step 9: 커밋 및 PR**
+- [ ] **Step 7: 커밋 및 PR**
 
 ```bash
 git add tools/course_search.py common/models.py tests/test_course_search.py tests/fixtures/lect_list_response.json
