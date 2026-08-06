@@ -47,6 +47,16 @@ def _extract_ncsi_url(content: bytes) -> str:
     return f"{NCSI_URL}?{query}&fake={int(time.time() * 1000)}"
 
 
+def _find_section(sections: dict, keyword: str):
+    """헤딩에 keyword가 포함된 섹션을 찾는다(완전일치 아님).
+
+    NCS 기반 전공과목은 헤딩에 "NCS정보 및 " 같은 접두어가 붙는다
+    ("NCS정보 및 교과목표"). 픽스처로 쓴 RISE 특례 교과목만 "교과목표"
+    단독 형태였다 — 완전일치로 찾으면 일반 전공과목이 전부 깨진다.
+    """
+    return next((box for heading, box in sections.items() if keyword in heading), None)
+
+
 def _label_map(box, *, multiline: bool = False) -> dict[str, str]:
     result: dict[str, str] = {}
     table = box.select_one("table.bodyTbl") if box is not None else None
@@ -99,17 +109,17 @@ def parse_syllabus(content: bytes, source_url: str) -> SyllabusDetail:
         if heading is not None:
             sections[heading.get_text(strip=True)] = box
 
-    basic = _label_map(sections.get("교과목 기본정보"))
+    basic = _label_map(_find_section(sections, "교과목 기본정보"))
     if not basic:
         raise ParseError("강의계획서")
 
-    goals = _label_map(sections.get("교과목표"), multiline=True)
+    goals = _label_map(_find_section(sections, "교과목표"), multiline=True)
     if not goals:
         # overview/goals/content_summary가 전부 이 표에서 나온다. 비어 있는데
         # 성공으로 넘기면 알맹이 없는 결과를 정상 응답으로 위장하게 된다.
         raise ParseError("강의계획서 교과목표")
 
-    methods = _extract_evaluation_methods(sections.get("평가방법"))
+    methods = _extract_evaluation_methods(_find_section(sections, "평가방법"))
 
     credit_text = basic.get("학점", "")
     return SyllabusDetail(

@@ -13,6 +13,7 @@ from tools.syllabus import (
     LECT_PLAN_POP_URL,
     NCSI_URL,
     _extract_ncsi_url,
+    _find_section,
     _label_map,
     get_syllabus,
     parse_syllabus,
@@ -166,6 +167,102 @@ def test_parse_syllabus_raises_parse_error_when_goals_section_missing():
     with pytest.raises(ParseError) as exc_info:
         parse_syllabus(html.encode("utf-8"), "https://x")
     assert "교과목표" in str(exc_info.value)
+
+
+# --- NCS 전공과목의 헤딩 변형 ("NCS정보 및 교과목표") ---
+
+# 실제 응답을 받아 저장한 fixtures/*.html과 달리, 아래는 손으로 쓴 최소 재현용
+# HTML이다. 실제 NCS 전공과목 페이지의 캡처본이 아니라 헤딩 변형만 재현한
+# 골격이며, 표 구조는 fixtures/syllabus_detail.html의 행 모양을 옮긴 것이다.
+_NCS_HEADING_SYLLABUS = """<html><head><title>강의계획서</title></head><body>
+<div class="subManaCon">
+    <div class="tabBox">
+        <h3>교과목 기본정보</h3>
+        <table class="bodyTbl tdLine bdl bdr">
+            <tbody>
+                <tr>
+                    <th class="bdr">교과목명</th>
+                    <td colspan="3">전공실무프로젝트</td>
+                </tr>
+                <tr>
+                    <th class="bdr">학년/학기(분반)</th>
+                    <td>2학년 / 1학기 (201반)</td>
+                    <th class="bdr bdl">담당교수</th>
+                    <td>홍길동</td>
+                </tr>
+                <tr>
+                    <th class="bdr">이수구분</th>
+                    <td>전공필수</td>
+                    <th class="bdr bdl">학점</th>
+                    <td>3</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="tabBox">
+        <h3>NCS정보 및 교과목표</h3>
+        <div class="box">
+            <table class="bodyTbl">
+                <tbody>
+                    <tr>
+                        <th>교과목 개요</th>
+                        <td colspan="3" class="left">NCS 능력단위를 기반으로 한 실무 프로젝트 교과목임.</td>
+                    </tr>
+                    <tr>
+                        <th>교과목표</th>
+                        <td colspan="3" class="left">- 요구사항을 분석하고 설계 문서를 작성할 수 있다.</td>
+                    </tr>
+                    <tr>
+                        <th>교육내용</th>
+                        <td colspan="3" class="left">1. 요구사항 분석<br/>2. 설계와 구현</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body></html>"""
+
+
+def test_parse_syllabus_handles_ncs_prefixed_goals_heading():
+    """헤딩이 "NCS정보 및 교과목표"인 일반 전공과목도 파싱되어야 한다.
+
+    완전일치로 찾던 시절엔 이 헤딩에서 ParseError가 났다 — 픽스처로 쓴
+    RISE 특례 교과목만 "교과목표" 단독 형태라 버그가 가려져 있었다.
+    """
+    detail = parse_syllabus(_NCS_HEADING_SYLLABUS.encode("utf-8"), "https://x")
+
+    assert detail.course_name == "전공실무프로젝트"
+    assert detail.professor == "홍길동"
+    assert detail.credit == 3
+    assert detail.overview == "NCS 능력단위를 기반으로 한 실무 프로젝트 교과목임."
+    assert detail.goals == "- 요구사항을 분석하고 설계 문서를 작성할 수 있다."
+    assert "요구사항 분석" in detail.content_summary
+
+
+def test_find_section_matches_partial_heading():
+    sections = {"NCS정보 및 교과목표": "goals-box", "교과목 기본정보": "basic-box"}
+    assert _find_section(sections, "교과목표") == "goals-box"
+    assert _find_section(sections, "교과목 기본정보") == "basic-box"
+
+
+def test_find_section_returns_none_when_no_heading_contains_keyword():
+    sections = {"교과목 기본정보": "basic-box", "교재": "book-box"}
+    assert _find_section(sections, "평가방법") is None
+
+
+def test_find_section_does_not_confuse_real_fixture_headings():
+    """실제 픽스처의 헤딩끼리 부분일치로 서로를 잡아채지 않는지 확인."""
+    soup = parse_html((FIXTURES / "syllabus_detail.html").read_bytes())
+    sections = {}
+    for box in soup.select("div.tabBox"):
+        heading = box.find("h3")
+        if heading is not None:
+            sections[heading.get_text(strip=True)] = heading.get_text(strip=True)
+
+    for keyword in ("교과목 기본정보", "교과목표", "평가방법"):
+        matched = [h for h in sections if keyword in h]
+        assert matched == [keyword], f"{keyword}가 다른 헤딩과 충돌한다: {matched}"
 
 
 # --- get_syllabus() 전체 흐름 ---
