@@ -75,3 +75,12 @@ class NoticeDetail(BaseModel):
         description="학교 서버 조회에 실패해 캐시된 값을 반환한 경우, "
         "그 값이 몇 분 전 것인지. 실시간 조회에 성공했다면 null.",
     )
+
+
+class Department(BaseModel):
+    code: str = Field(description="search_courses의 department_code에 그대로 넘길 학과 코드")
+    name: str = Field(description="학과명")
+
+
+class DepartmentList(BaseModel):
+    departments: list[Department] = Field(description="sugang에 등록된 전체 학과 목록")
