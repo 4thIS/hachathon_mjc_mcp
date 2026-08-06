@@ -61,3 +61,8 @@ class NoticeDetail(BaseModel):
     )
     attachments: list[str] = Field(description="첨부파일 이름 목록")
     truncated: bool = Field(description="본문이 길이 제한으로 잘렸는지 여부")
+    stale_age_min: int | None = Field(
+        default=None,
+        description="학교 서버 조회에 실패해 캐시된 값을 반환한 경우, "
+        "그 값이 몇 분 전 것인지. 실시간 조회에 성공했다면 null.",
+    )
