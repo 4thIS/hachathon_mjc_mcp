@@ -1,0 +1,14 @@
+
+
+<script language ="javascript">
+	var url   = "https://ncsi.mjc.ac.kr/forMJCCyber/lecture.do"
+				  + "?sbj=FAKEsbjTOKEN/abcd1234EF=="
+				  + "&maj=FAKEmajTOKEN/ghij5678KL=="
+				  + "&year=FAKEyearTOKEN+mnop90QR=="
+				  + "&term=FAKEtermTOKEN+stuv12WX=="
+				  + "&group=FAKEgroupTOKEN+yz3456AB=="
+				  + "&fake=" + Date.now()
+				  ;
+	//url = "https://ncsi.mjc.ac.kr/forMJCCyber/lecture.do?sbj=OLDsbjTOKENxxxx1111==&maj=OLDmajTOKENxxxx2222==&year=OLDyearTOKENxxxx3333==&term=OLDtermTOKENxxxx4444==&group=OLDgroupTOKENxxxx5555%2Bxxxx==";
+	location.href = url;
+</script>

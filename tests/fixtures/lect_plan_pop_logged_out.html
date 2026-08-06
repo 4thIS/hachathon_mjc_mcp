@@ -1,0 +1,38 @@
+
+
+<!DOCTYPE html>
+<html>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>로그아웃</title>
+<head>
+<script type="text/javascript">
+
+function logOut() {
+	var url = window.location.origin;
+	localStorage.removeItem("menu");
+	try{
+		var arrPop = top.arrPop;
+		for(i=0; i<arrPop.length; i++){
+			if(arrPop[i] && !arrPop[i].closed){
+				arrPop[i].close();
+			}
+		}
+	}catch(err){true;}
+	if(window.opener){
+		opener.top.location.href = url;
+		window.close();
+	}else{
+		parent.top.location.target = "_self";
+		parent.top.location.href = url;
+	}
+}
+
+</script>
+</head>
+
+
+<body onLoad="logOut()">
+
+
+</body>
+</html>

@@ -272,12 +272,13 @@ class SyllabusDetail(BaseModel):
 - `common/models.py` — `SyllabusDetail` 추가, `CourseSummary`에 `section: str` 필드 추가
 - `tools/course_search.py` — `parse_courses()`에 `section=row.get("bunban")` 매핑 추가
 - `common/http.py` — `fetch()`가 커스텀 헤더를 받지 않는다(User-Agent 고정). ncsi 요청에 `Referer`를 실어 보내려면 선택적 `headers` 파라미터를 추가해야 한다. ncsi 요청은 쿠키가 필요 없으므로 `fetch_authenticated()`(세션 쿠키 스코프 검증용, `_ALLOWED_AUTH_HOSTS`)가 아니라 `fetch()`(Tier 1 계열, 비인증) 경로에 둔다 — 세션 쿠키를 다루지 않는 요청을 인증 전용 함수에 억지로 태우면 그 함수의 "쿠키가 허용된 호스트로만 나간다"는 보장의 의미가 흐려진다.
-- `tools/syllabus.py`(신규) — `get_syllabus()`. 흐름: (인증) `POST sugang.mjc.ac.kr/core/lectPlanPop` → 응답 스크립트에서 정규식으로 `ncsi.mjc.ac.kr` URL 재구성(JS 주석 줄은 먼저 제거하고 파싱 — 주석에도 같은 패턴의 예시 URL이 남아있어 혼동 가능) → (비인증) 그 URL GET → HTML 파싱
+- `tools/syllabus.py`(신규) — `get_syllabus()`. 흐름: (인증) `POST sugang.mjc.ac.kr/core/lectPlanPop` → 응답 스크립트에서 URL 재구성 → (비인증) 그 URL GET → HTML 파싱. URL 재구성은 순서에 의존하는 따옴표 이어붙이기 대신, **필드명별로 개별 정규식**(`sbj=([^"]*)"` 등)으로 뽑는다 — 주석 처리된 예시 URL이 실측 응답에 남아 있어(`//url = "https://ncsi..."`), 순서 기반 이어붙이기는 주석의 값과 뒤섞인다(실측 중 실제로 재현·확인함). **ncsi 베이스 URL(`https://ncsi.mjc.ac.kr/forMJCCyber/lecture.do`)은 반드시 코드에 고정 상수로 박아두고, sugang 응답 본문에서 호스트/베이스 경로를 추출하지 않는다** — 쿼리 파라미터 값만 정규식으로 뽑는다. sugang 응답 텍스트에서 URL 전체(호스트 포함)를 그대로 가져오면, 그 응답이 조작되거나 변조될 경우 `fetch()`가 임의 호스트로 나갈 수 있다(SSRF 여지).
 
 ### 14.5 에러 처리
 
-- 세션 없음/만료 → 기존 `require_session`/`require_active_session`과 동일 경로(Tier 2와 완전히 동일한 에러 메시지)
-- `lectPlanPop`이 예상한 스크립트 형식을 돌려주지 않으면(사이트 구조 변경 등) `ParseError`로 명시적으로 올린다 — 빈 결과를 성공으로 위장하지 않는다
+- 세션 없음/만료(툴 호출 시점에 애초에 세션 파일이 없음) → 기존 `require_session`과 동일 경로
+- **`lectPlanPop`은 세션이 만료됐을 때 3xx 리다이렉트가 아니라 `200 OK` + "로그아웃" 안내 HTML(`<title>로그아웃</title>`)을 돌려준다** — `lectList`와 다른 실패 모드다(실측 확인, 세션 수명 20~40분 관찰). `require_active_session()`의 리다이렉트 검사만으로는 못 잡으므로, 응답 본문에서 이 표식을 별도로 확인해 `SessionRequiredError`를 올린다.
+- 위 두 경우가 아닌데도 `lectPlanPop`이 예상한 스크립트 형식을 돌려주지 않으면(사이트 구조 변경 등) `ParseError`로 명시적으로 올린다 — 빈 결과를 성공으로 위장하지 않는다
 
 ### 14.6 범위 밖
 
