@@ -22,12 +22,11 @@ flowchart LR
     Client["AI 클라이언트<br/>(Claude 등)"] -- stdio --> Server["mjc MCP 서버<br/>server.py"]
     Server --> Seats[get_library_seats]
     Server --> Notices["search_notices<br/>get_notice"]
-    Server --> Depts[list_departments]
+    Server --> Depts["list_departments<br/>(정적 매핑, 접속 없음)"]
     Server --> Courses["search_courses<br/>(로그인 필요)"]
     Seats --> LibAPI[("도서관 좌석 API")]
     Notices --> Web[("학교 홈페이지 게시판")]
-    Depts --> Sugang[("sugang 수강신청 시스템")]
-    Courses --> Sugang
+    Courses --> Sugang[("sugang 수강신청 시스템")]
 ```
 
 ---
