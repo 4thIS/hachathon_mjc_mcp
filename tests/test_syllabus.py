@@ -170,74 +170,88 @@ def test_parse_syllabus_raises_parse_error_when_goals_section_missing():
 
 
 # --- NCS 전공과목의 헤딩 변형 ("NCS정보 및 교과목표") ---
-
-# 실제 응답을 받아 저장한 fixtures/*.html과 달리, 아래는 손으로 쓴 최소 재현용
-# HTML이다. 실제 NCS 전공과목 페이지의 캡처본이 아니라 헤딩 변형만 재현한
-# 골격이며, 표 구조는 fixtures/syllabus_detail.html의 행 모양을 옮긴 것이다.
-_NCS_HEADING_SYLLABUS = """<html><head><title>강의계획서</title></head><body>
-<div class="subManaCon">
-    <div class="tabBox">
-        <h3>교과목 기본정보</h3>
-        <table class="bodyTbl tdLine bdl bdr">
-            <tbody>
-                <tr>
-                    <th class="bdr">교과목명</th>
-                    <td colspan="3">전공실무프로젝트</td>
-                </tr>
-                <tr>
-                    <th class="bdr">학년/학기(분반)</th>
-                    <td>2학년 / 1학기 (201반)</td>
-                    <th class="bdr bdl">담당교수</th>
-                    <td>홍길동</td>
-                </tr>
-                <tr>
-                    <th class="bdr">이수구분</th>
-                    <td>전공필수</td>
-                    <th class="bdr bdl">학점</th>
-                    <td>3</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    <div class="tabBox">
-        <h3>NCS정보 및 교과목표</h3>
-        <div class="box">
-            <table class="bodyTbl">
-                <tbody>
-                    <tr>
-                        <th>교과목 개요</th>
-                        <td colspan="3" class="left">NCS 능력단위를 기반으로 한 실무 프로젝트 교과목임.</td>
-                    </tr>
-                    <tr>
-                        <th>교과목표</th>
-                        <td colspan="3" class="left">- 요구사항을 분석하고 설계 문서를 작성할 수 있다.</td>
-                    </tr>
-                    <tr>
-                        <th>교육내용</th>
-                        <td colspan="3" class="left">1. 요구사항 분석<br/>2. 설계와 구현</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-</body></html>"""
+#
+# 실제 응답 캡처본 fixtures/syllabus_detail_capstone.html("캡스톤디자인",
+# NCS 기반 전공과목)로 검증한다. 기존 fixtures/syllabus_detail.html은 헤딩이
+# "교과목표" 단독인 RISE 특례 교과목이라 완전일치 버그를 가리고 있었다.
 
 
-def test_parse_syllabus_handles_ncs_prefixed_goals_heading():
-    """헤딩이 "NCS정보 및 교과목표"인 일반 전공과목도 파싱되어야 한다.
+def _capstone():
+    return parse_syllabus(
+        (FIXTURES / "syllabus_detail_capstone.html").read_bytes(),
+        "https://ncsi.mjc.ac.kr/forMJCCyber/lecture.do?sbj=x",
+    )
 
-    완전일치로 찾던 시절엔 이 헤딩에서 ParseError가 났다 — 픽스처로 쓴
-    RISE 특례 교과목만 "교과목표" 단독 형태라 버그가 가려져 있었다.
+
+def test_parse_syllabus_extracts_core_fields_from_ncs_major_course():
+    """헤딩이 "NCS정보 및 교과목표"인 실제 전공과목 응답을 파싱한다.
+
+    완전일치로 찾던 시절엔 이 헤딩에서 ParseError가 났다.
     """
-    detail = parse_syllabus(_NCS_HEADING_SYLLABUS.encode("utf-8"), "https://x")
+    detail = _capstone()
 
-    assert detail.course_name == "전공실무프로젝트"
-    assert detail.professor == "홍길동"
-    assert detail.credit == 3
-    assert detail.overview == "NCS 능력단위를 기반으로 한 실무 프로젝트 교과목임."
-    assert detail.goals == "- 요구사항을 분석하고 설계 문서를 작성할 수 있다."
-    assert "요구사항 분석" in detail.content_summary
+    assert detail.course_name == "캡스톤디자인"
+    assert detail.professor == "정필성"
+    assert detail.category == "전공과정"
+    assert detail.credit == 4
+    assert detail.grade_semester == "3학년 / 2학기 (101반)"
+    assert detail.evaluation_methods == ["D.논술형시험", "K.구두발표"]
+
+
+def test_parse_syllabus_ncs_major_course_goals_section_is_populated():
+    """overview/goals/content_summary가 전부 "NCS정보 및 교과목표" 표에서 나온다."""
+    detail = _capstone()
+
+    assert "캡스톤디자인 과제를 병행하여" in detail.overview
+    assert "사물인터넷과 임베디드 시스템" in detail.goals
+    assert "주제 발굴부터 결과 발표까지" in detail.content_summary
+    assert "\n" in detail.overview  # <br/>이 줄바꿈으로 살아 있어야 한다
+
+
+def test_parse_syllabus_ncs_major_course_has_no_phone_or_email_shaped_value():
+    """원문에 마스킹된 연락처가 남아 있어도 결과에는 그 형태조차 새면 안 된다."""
+    raw = (FIXTURES / "syllabus_detail_capstone.html").read_bytes().decode("utf-8")
+    # 픽스처 자체에 전화·이메일 "모양"의 문자열이 있어야 이 테스트가 의미를 가진다.
+    assert _PHONE_SHAPED.search(raw) and _EMAIL_SHAPED.search(raw)
+
+    detail = _capstone()
+    dumped = detail.model_dump()
+    assert "phone" not in dumped
+    assert "email" not in dumped
+    for field, value in dumped.items():
+        text = value if isinstance(value, str) else str(value)
+        assert not _PHONE_SHAPED.search(text), f"{field}에 전화번호 형태 문자열이 남았다"
+        assert not _EMAIL_SHAPED.search(text), f"{field}에 이메일 형태 문자열이 남았다"
+
+
+def test_parse_syllabus_ignores_unrecognized_ncs_sections():
+    """파서가 쓰지 않는 NCS 전용 섹션이 있어도 그냥 무시한다(design.md §14.6).
+
+    부분일치로 섹션을 찾으므로, 이 헤딩들이 인식 대상 키워드를 가로채지
+    않는다는 것까지 함께 확인한다.
+    """
+    soup = parse_html((FIXTURES / "syllabus_detail_capstone.html").read_bytes())
+    headings = [
+        box.find("h3").get_text(strip=True)
+        for box in soup.select("div.tabBox")
+        if box.find("h3") is not None
+    ]
+    for unused in (
+        "능력단위요소 및 수행준거",
+        "지식 / 기술 / 태도",
+        "직업기초능력",
+        "교과목 구성",
+        "교재 (NCS학습모듈)",
+        "교수/학습방법",
+    ):
+        assert unused in headings, f"픽스처에 '{unused}' 섹션이 없다 — 테스트 전제가 깨졌다"
+
+    sections = {heading: heading for heading in headings}
+    assert _find_section(sections, "교과목 기본정보") == "교과목 기본정보"
+    assert _find_section(sections, "교과목표") == "NCS정보 및 교과목표"
+    assert _find_section(sections, "평가방법") == "평가방법"
+
+    _capstone()  # 인식 못 하는 섹션이 섞여 있어도 예외 없이 끝나야 한다
 
 
 def test_find_section_matches_partial_heading():
