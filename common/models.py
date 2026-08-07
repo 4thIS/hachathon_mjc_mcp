@@ -95,7 +95,26 @@ class CourseSummary(BaseModel):
     grade: int = Field(description="대상 학년")
     schedule: str = Field(description="강의 시간과 강의실. 교시마다 줄바꿈으로 구분")
     capacity: int = Field(description="정원. 실시간 신청 인원은 제공하지 않는다")
+    section: str = Field(description="분반. get_syllabus의 section에 그대로 넘길 것")
 
 
 class CourseList(BaseModel):
     courses: list[CourseSummary] = Field(description="검색된 개설 강좌 목록")
+
+
+class SyllabusDetail(BaseModel):
+    course_name: str = Field(description="교과목명")
+    professor: str = Field(description="담당 교수명")
+    category: str = Field(description="이수구분 (예: 통합전공교과)")
+    credit: int = Field(description="학점")
+    grade_semester: str = Field(description="대상 학년/학기(분반). 원문 표시 그대로")
+    overview: str = Field(description="교과목 개요")
+    goals: str = Field(description="교과목표")
+    content_summary: str = Field(description="교육내용 요약")
+    evaluation_methods: list[str] = Field(
+        description="평가방법 중 실제로 체크된 항목만(예: ['A.포트폴리오', 'K.구두발표'])"
+    )
+    source_url: str = Field(
+        description="강의계획서 원문(ncsi) 링크. 주차별 계획·교재·장애학생 지원 등 "
+        "이 모델에 없는 상세는 여기서 직접 확인하도록 안내할 것"
+    )

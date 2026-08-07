@@ -56,8 +56,8 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
 ```
 
 끝입니다. 도서관 좌석·공지·학과 목록 조회는 별도 계정이나 API 키가 필요 없습니다.
-강좌 검색(`search_courses`)만 본인 학교 계정 로그인이 필요합니다 — 아래
-"로그인이 필요한 툴 사용법" 참고.
+강좌 검색(`search_courses`)과 강의계획서 조회(`get_syllabus`)만 본인 학교 계정
+로그인이 필요합니다 — 아래 "로그인이 필요한 툴 사용법" 참고.
 
 > 요구 사항: Python 3.10 이상 (`mcp` SDK 요구 사항 기준. 개발·검증 환경은 3.14).
 > macOS/Linux는 `command`를 `.venv/bin/python`으로 바꿉니다.
@@ -104,6 +104,9 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
   → `list_departments`로 학과명을 코드로 바꾸고, 그 코드로 `search_courses`를
   호출합니다. 학과 내부 코드를 AI에게 미리 알려줄 필요가 없습니다(로그인 필요,
   아래 참고).
+- "정보통신공학과 3학년 캡스톤디자인 강의계획서 보여줘"
+  → list_departments로 학과 코드를, search_courses로 과목의 course_code/section을
+  얻은 뒤 get_syllabus로 강의계획서를 조회하는 3단계 조합입니다.
 
 ---
 
@@ -116,11 +119,12 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
 | `get_notice` | 공지 한 건의 본문, 첨부파일 목록, 본문 이미지 링크, 원문 페이지 주소 | `notice_id` (목록이 돌려준 값 그대로) | www.mjc.ac.kr 게시판 |
 | `list_departments` | 학과 목록(이름·코드). 로그인 불필요 | 없음 | sugang(정적 매핑) |
 | `search_courses` | 개설 강좌 검색. **로그인 필요** — 아래 참고 | `department_code`(목록이 돌려준 값), `course_type`, `grade`, `keyword` | sugang 수강신청 시스템 |
+| `get_syllabus` | 강의계획서 조회(NCSI 연동). **로그인 필요** | `department_code`(list_departments가 준 값 — search_courses 호출에 쓴 것과 동일한 값), `course_code`·`section`(search_courses 결과 값) | ncsi.mjc.ac.kr |
 
 모든 툴은 **읽기 전용**입니다(`read_only_hint=True`). 학교 시스템에 무언가를
 쓰거나 바꾸는 동작은 없습니다.
 
-### 로그인이 필요한 툴 사용법 (`search_courses`)
+### 로그인이 필요한 툴 사용법 (`search_courses`, `get_syllabus`)
 
 비밀번호를 저장하지 않으므로, 세션이 없거나 만료되면 별도 터미널에서 직접 로그인해야 합니다.
 
@@ -131,8 +135,11 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
 학번·비밀번호를 입력하면(화면에 표시되지 않음) 세션만 로컬(`%LOCALAPPDATA%\mjc-mcp\`, 저장소 밖)에 저장합니다.
 비밀번호는 어디에도 저장하지 않으므로, 교내 SSO 비밀번호가 90일마다 강제로 바뀌어도
 다음에 헬퍼를 다시 실행할 때 그 시점의 비밀번호를 입력하면 됩니다. 세션이 만료되면
-`search_courses`가 자동으로 재로그인을 시도하지 않고 "헬퍼를 실행하세요"라는
+두 툴 모두 자동으로 재로그인을 시도하지 않고 "헬퍼를 실행하세요"라는
 안내만 돌려줍니다.
+
+`get_syllabus`는 sugang 로그인 세션을 그대로 재사용합니다 — NCSI(강의계획서
+시스템)용으로 별도 로그인을 요구하지 않습니다.
 
 설계 의도 — 왜 목록과 상세를 나눴는지, 왜 게시판 내부 코드를 AI에게 숨기는지,
 데모 중 서버가 죽어도 답이 나오게 한 캐시 폴백 구조 등 — 은
@@ -143,7 +150,8 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
 ## 데이터 수집 원칙
 
 - 대부분의 툴은 로그인 없이 누구나 볼 수 있는 **공개 페이지만** 조회합니다.
-  `search_courses`만 예외로, 사용자 본인 계정 로그인이 필요합니다(아래 참고).
+  `search_courses`와 `get_syllabus`만 예외로, 사용자 본인 계정 로그인이
+  필요합니다(아래 참고).
 - `robots.txt`를 확인했습니다. `www.mjc.ac.kr`은 `User-agent: * / Allow: /`로
   전면 허용(2026-08-06). `sugang.mjc.ac.kr`은 `robots.txt` 자체가 없습니다(2026-08-07,
   명시적 허용도 거부도 아닌 상태).
@@ -153,9 +161,9 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
 - 조회 결과는 사용자의 AI 클라이언트에만 전달됩니다. **외부로 전송하거나
   재배포하지 않습니다.** 로컬 캐시는 데모 중 장애 대비용이며 저장소에 포함되지 않습니다.
 - 이 저장소에는 계정·비밀번호·세션 등 어떤 자격증명도 포함되어 있지 않습니다.
-- `search_courses`(로그인 필요)는 사용자 본인 계정으로만 동작하며, 비밀번호는
-  디스크에 저장하지 않고 세션 쿠키만 저장소 바깥에 저장합니다. 자동 재로그인은
-  하지 않습니다.
+- `search_courses`·`get_syllabus`(로그인 필요)는 사용자 본인 계정으로만 동작하며,
+  비밀번호는 디스크에 저장하지 않고 세션 쿠키만 저장소 바깥에 저장합니다. 자동
+  재로그인은 하지 않습니다.
 - 실제 서비스로 운영하려면 **학사팀 협의가 전제**입니다.
 
 ---
@@ -177,6 +185,9 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
   제공합니다.
 - **`search_courses`는 사용자가 별도 터미널에서 로그인 헬퍼를 먼저 실행해야
   동작합니다.** 세션이 만료되면 자동으로 재로그인하지 않고 안내 메시지만 돌려줍니다.
+- **`get_syllabus`는 핵심 필드만 구조화합니다.** 주차별(15주) 상세 계획, 교재,
+  장애학생 학습지원 안내, 담당교수 연락처는 담지 않습니다 — 응답의 source_url에서
+  원문을 직접 확인하세요.
 - **추가 시스템 연동은 보류했습니다.** E-class(`cyber.mjc.ac.kr`)는 `robots.txt`가 전면
   크롤링을 거부하고 있어 진행하지 않았습니다. 커리어정보 시스템(`mpu.mjc.ac.kr`)은 조사
   결과 E-class 안에 내장되는 제3자 벤더 시스템으로 확인되어 함께 보류했습니다. 자격증명
@@ -199,7 +210,7 @@ AI 클라이언트 설정(`.mcp.json` 등)에 아래를 추가하고 클라이�
 server.py        진입점. 각 툴 모듈의 register(mcp) 호출만 한다
 common/          http · parse · cache · errors · models · session (공통 레이어)
 auth/            login_helper.py — 독립 CLI, 사용자가 직접 실행
-tools/           library_seats.py, notices.py, departments.py, course_search.py
+tools/           library_seats.py, notices.py, departments.py, course_search.py, syllabus.py
 tests/fixtures/  실제 응답 원본
 docs/design.md   설계 문서
 ```

@@ -222,3 +222,67 @@ def search_courses(department_code: str, grade: int | None = None, keyword: str 
 
 - **E-class(`cyber.mjc.ac.kr`)** — `robots.txt`가 `Disallow: /`로 전면 크롤링 거부. CSRF 토큰 요구(계획 문서 기존 기록)에 더해 정책적으로도 명시적 거부라 진행하지 않는다.
 - **커리어정보(`mpu.mjc.ac.kr`)** — `robots.txt`는 없지만, 응답 헤더 `X-Frame-Options: SAMEORIGIN ALLOW-FROM https://cyber.mjc.ac.kr`로 **cyber 안에 iframe으로 삽입되는 종속 시스템**임을 확인. `Content-Security-Policy`의 `connect-src`에 `wss://aws.huno.kr:4443`(제3자 도메인)이 있어 **외부 벤더의 화이트라벨 제품**으로 추정된다. 원래 계획 문서의 "ASP.NET 추정"은 근거를 찾지 못했다(관련 흔적 없음, 오히려 SPA 구조). cyber에 종속된 데다 제3자 서비스라 판단이 더 필요해 보류.
+
+## 14. Tier 3 구현 — 강의계획서 조회 (NCSI 연동)
+
+sugang 수강신청 화면에서 "강의계획서" 버튼을 누르면 `ncsi.mjc.ac.kr`(NCS 강의계획서 시스템)로 이동한다는 제보를 받아 실제 로그인 세션으로 흐름을 실측했다(2026-08-07).
+
+### 14.1 실측한 흐름
+
+1. sugang 화면의 `fnLectPlanPop(rowData)`(`fn-basket.js`)가 학과코드(`clsMajCd`)·과목코드(`subjectCd`)·분반(`bunban`)을 평문으로 담아 인증된 `POST /core/lectPlanPop`를 sugang 서버로 보낸다.
+2. 서버는 그 값들을 **AES-128로 직접 암호화**해 `sbj`/`maj`/`year`/`term`/`group` 다섯 개 쿼리 파라미터로 채운 `https://ncsi.mjc.ac.kr/forMJCCyber/lecture.do?...` URL을 만들고, 그 URL로 `location.href`를 옮기는 짧은 `<script>` 조각을 응답으로 돌려준다.
+3. 그 URL을 그대로 GET하면 강의계획서 전문이 나온다. **요청에 쿠키가 전혀 실리지 않는다** — 암호화된 쿼리 파라미터 자체가 접근 토큰 역할을 한다(캡처한 요청 헤더에 `Cookie`가 없고 `Referer: https://sugang.mjc.ac.kr/`만 있음).
+
+즉 **AES 암호화 로직을 우리가 재구현할 필요가 없다.** 암호화는 인증된 sugang 세션으로 서버가 대신 해주고, 우리는 그 결과 URL을 그대로 따라가기만 하면 된다. `robots.txt`는 `ncsi.mjc.ac.kr`에도 존재하지 않는다(404, 2026-08-07) — `sugang.mjc.ac.kr`과 같은 상황(명시적 허용도 거부도 아님).
+
+### 14.2 툴 인터페이스
+
+```python
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
+def get_syllabus(department_code: str, course_code: str, section: str) -> SyllabusDetail:
+    """강의계획서를 조회한다. 로그인 필요(search_courses와 동일 세션 재사용).
+    department_code는 list_departments가 돌려준 값 — search_courses 호출에 쓴 것과
+    동일한 값 — 을 그대로 다시 넘길 것. course_code/section은 search_courses가
+    돌려준 CourseSummary의 course_code/section을 그대로 넘길 것."""
+```
+
+`search_courses`가 반환하는 `CourseSummary`에 **`section`(분반) 필드가 없어 새로 추가해야 한다** — `lectList` 응답의 `bunban`을 그대로 매핑한다(기존 `parse_courses()`가 이미 이 필드를 갖고 있으나 모델에 담지 않았을 뿐이다). `course_code`는 이미 `CourseSummary`가 들고 있는 값을 그대로 재사용한다(과목코드는 실측상 `subjectCdHr`와 `subjectCd`가 항상 같은 값이라 별도 필드가 필요 없다). **`department_code`는 `CourseSummary`에 들어 있지 않다** — AI가 `search_courses`에 넘겼던 그 값(= `list_departments`가 준 학과 코드)을 그대로 다시 넘긴다. 학과 코드는 검색 조건으로 이미 AI 손에 있는 값이므로 결과 모델에 되돌려 담지 않는다(중복 필드를 만들지 않는다).
+
+### 14.3 데이터 모델
+
+`SyllabusDetail`은 원문의 모든 섹션(주차별 15주 계획, 교육정보, 장애학생 지원 등)을 담지 않는다. 주차별 표는 과목마다 행 구조가 미묘하게 달라 파싱이 깨지기 쉽고, 남은 시연 준비 시간 대비 얻는 가치가 낮다고 판단했다("이 과목 뭐 배워?"에 답하는 데는 핵심 필드로 충분하다). 원문 링크(`source_url`)를 항상 포함해 상세가 필요하면 사람이 직접 보게 한다 — 공지 본문 이미지 처리와 같은 원칙이다.
+
+```python
+class SyllabusDetail(BaseModel):
+    course_name: str
+    professor: str
+    category: str              # 이수구분 (예: 통합전공교과) — CourseSummary.category와 동일 의미
+    credit: int
+    grade_semester: str        # 원문 표시 그대로 (예: "1학년 / 2학기 (101반)")
+    overview: str               # 교과목 개요
+    goals: str                  # 교과목표
+    content_summary: str        # 교육내용
+    evaluation_methods: list[str]  # 평가방법 중 'O' 표시된 항목만 (예: ["포트폴리오", "구두발표"])
+    source_url: str             # ncsi 원문 링크. 주차별 상세 등은 여기서 확인하도록 안내
+```
+
+**담당교수 연구실 전화·휴대폰·이메일은 원문에 공개 필드로 존재하지만 포함하지 않는다** — 이름(`professor`)은 이미 `search_courses`가 노출하는 값이라 일관되게 유지하되, 연락처는 툴 응답에 담지 않기로 결정했다(2026-08-07 확인).
+
+**`source_url`은 쿠키 없이 열리는 링크이므로, 이 값이 남는 곳(대화 로그 등)에서는 로그인 없이 해당 강의계획서를 열람할 수 있다.** 학번 등 사용자 식별 정보는 URL에 포함되지 않는다(쿼리 파라미터는 `sbj`/`maj`/`year`/`term`/`group`뿐). 연락처를 모델에서 빼는 데는 공을 들였지만, 그 연락처가 실린 페이지로 이어지는 링크 자체는 나간다는 긴장이 있다 — 심각도는 낮다고 판단한다(강의계획서는 준공개 학술 정보이고, `get_notice`의 `source_url`과 동일한 기존 패턴).
+
+### 14.4 구현 변경 범위
+
+- `common/models.py` — `SyllabusDetail` 추가, `CourseSummary`에 `section: str` 필드 추가
+- `tools/course_search.py` — `parse_courses()`에 `section=row.get("bunban")` 매핑 추가
+- `common/http.py` — `fetch()`가 커스텀 헤더를 받지 않는다(User-Agent 고정). ncsi 요청에 `Referer`를 실어 보내려면 선택적 `headers` 파라미터를 추가해야 한다. ncsi 요청은 쿠키가 필요 없으므로 `fetch_authenticated()`(세션 쿠키 스코프 검증용, `_ALLOWED_AUTH_HOSTS`)가 아니라 `fetch()`(Tier 1 계열, 비인증) 경로에 둔다 — 세션 쿠키를 다루지 않는 요청을 인증 전용 함수에 억지로 태우면 그 함수의 "쿠키가 허용된 호스트로만 나간다"는 보장의 의미가 흐려진다.
+- `tools/syllabus.py`(신규) — `get_syllabus()`. 흐름: (인증) `POST sugang.mjc.ac.kr/core/lectPlanPop` → 응답 스크립트에서 URL 재구성 → (비인증) 그 URL GET → HTML 파싱. URL 재구성은 순서에 의존하는 따옴표 이어붙이기 대신, **필드명별로 개별 정규식**(`sbj=([^"]*)"` 등)으로 뽑는다 — 주석 처리된 예시 URL이 실측 응답에 남아 있어(`//url = "https://ncsi..."`), 순서 기반 이어붙이기는 주석의 값과 뒤섞인다(실측 중 실제로 재현·확인함). **ncsi 베이스 URL(`https://ncsi.mjc.ac.kr/forMJCCyber/lecture.do`)은 반드시 코드에 고정 상수로 박아두고, sugang 응답 본문에서 호스트/베이스 경로를 추출하지 않는다** — 쿼리 파라미터 값만 정규식으로 뽑는다. sugang 응답 텍스트에서 URL 전체(호스트 포함)를 그대로 가져오면, 그 응답이 조작되거나 변조될 경우 `fetch()`가 임의 호스트로 나갈 수 있다(SSRF 여지).
+
+### 14.5 에러 처리
+
+- 세션 없음/만료(툴 호출 시점에 애초에 세션 파일이 없음) → 기존 `require_session`과 동일 경로
+- **`lectPlanPop`은 세션이 만료됐을 때 `200 OK` + "로그아웃" 안내 HTML(`<title>로그아웃</title>`)을 돌려주는 경우가 있다** — `lectList`의 3xx 리다이렉트 실패 모드와 다르다(실측 확인, 세션 수명 20~40분 관찰). 세션이 어떻게 끊겼는지에 따라 302 리다이렉트로 나타나는 경우도 있음을 이후 별도 실측으로 확인했다(2026-08-07, PR #11 리뷰) — 즉 둘 다 실제로 발생한다. 그래서 두 경로 모두 잡는다: `require_active_session()`이 3xx를, `_extract_ncsi_url()`의 마커 체크가 200+로그아웃 타이틀을 잡는다.
+- 위 두 경우가 아닌데도 `lectPlanPop`이 예상한 스크립트 형식을 돌려주지 않으면(사이트 구조 변경 등) `ParseError`로 명시적으로 올린다 — 빈 결과를 성공으로 위장하지 않는다
+
+### 14.6 범위 밖
+
+주차별(15주) 학습 계획 상세, 교재 정보, 장애학생 학습지원 안내, 교수/학습방법·평가방법의 세부 배점 — 전부 `source_url`로 안내하고 파싱하지 않는다.

@@ -20,3 +20,16 @@ class ParseError(ToolError):
         super().__init__(
             f"{what}을(를) 해석하지 못했습니다. 사이트 구조가 변경되었을 수 있습니다."
         )
+
+
+class NotRegisteredError(ToolError):
+    """페이지 틀은 정상인데 학교가 아직 내용을 채우지 않은 경우.
+
+    파싱 실패(ParseError)와 구분한다 — 사이트 구조는 멀쩡하다.
+    """
+
+    def __init__(self, what: str) -> None:
+        super().__init__(
+            f"이 과목은 아직 {what}이(가) 등록되지 않았습니다. "
+            "학교에서 내용을 채운 뒤 다시 조회해 주세요."
+        )
