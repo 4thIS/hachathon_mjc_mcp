@@ -11,7 +11,7 @@ import time
 
 from mcp.types import ToolAnnotations
 
-from common.errors import ParseError
+from common.errors import NotRegisteredError, ParseError
 from common.http import fetch, fetch_authenticated
 from common.models import SyllabusDetail
 from common.parse import parse_html
@@ -112,6 +112,12 @@ def parse_syllabus(content: bytes, source_url: str) -> SyllabusDetail:
     basic = _label_map(_find_section(sections, "교과목 기본정보"))
     if not basic:
         raise ParseError("강의계획서")
+    if not basic.get("교과목명"):
+        # 표와 라벨은 있는데 값 칸이 전부 빈 문자열인 페이지가 있다(학교가 아직
+        # 강의계획서를 작성하지 않은 과목). dict가 비었는지만 보는 위 검사는
+        # 이 경우를 통과시켜, 전 필드가 빈 SyllabusDetail을 성공으로 위장한다.
+        # 교과목명은 실제 강의계획서라면 학교가 항상 채우는 값이다.
+        raise NotRegisteredError("강의계획서")
 
     goals = _label_map(_find_section(sections, "교과목표"), multiline=True)
     if not goals:

@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from common import http, session
-from common.errors import ParseError
+from common.errors import NotRegisteredError, ParseError
 from common.parse import parse_html
 from common.session import SessionRequiredError
 from tools.syllabus import (
@@ -167,6 +167,38 @@ def test_parse_syllabus_raises_parse_error_when_goals_section_missing():
     with pytest.raises(ParseError) as exc_info:
         parse_syllabus(html.encode("utf-8"), "https://x")
     assert "교과목표" in str(exc_info.value)
+
+
+# --- 학교가 아직 강의계획서를 작성하지 않은 과목 ---
+#
+# 아래 HTML은 실측 캡처본이 아니라 합성 최소 재현본이다. 실제 응답(T00137
+# 딥러닝 101/102/103에서 확인)은 표와 라벨은 그대로 있고 값 칸만 전부 빈
+# 문자열이었다. 그 구조만 남기고 나머지는 덜어냈다.
+_EMPTY_VALUES_SYLLABUS = """<html><body><div class="tabBox"><h3>교과목 기본정보</h3>
+<table class="bodyTbl"><tbody>
+<tr><th class="bdr">교과목명</th><td colspan="3"></td></tr>
+<tr><th class="bdr">학점</th><td></td></tr>
+</tbody></table></div>
+<div class="tabBox"><h3>교과목표</h3>
+<table class="bodyTbl"><tbody>
+<tr><th>교과목 개요</th><td class="left"></td></tr>
+<tr><th>교과목표</th><td class="left"></td></tr>
+<tr><th>교육내용</th><td class="left"></td></tr>
+</tbody></table></div></body></html>"""
+
+
+def test_parse_syllabus_raises_not_registered_when_all_values_empty():
+    """라벨만 있고 값이 전부 빈 페이지를 빈 SyllabusDetail로 위장하지 않는다."""
+    with pytest.raises(NotRegisteredError) as exc_info:
+        parse_syllabus(_EMPTY_VALUES_SYLLABUS.encode("utf-8"), "https://x")
+    assert "등록되지 않았습니다" in str(exc_info.value)
+
+
+def test_empty_values_fixture_would_have_passed_the_dict_emptiness_guard():
+    """이 재현본이 기존 검사(dict가 비었는가)는 통과한다는 전제를 고정한다."""
+    basic = _label_map(_box(_EMPTY_VALUES_SYLLABUS))
+    assert basic  # dict 자체는 비어 있지 않다
+    assert basic["교과목명"] == ""
 
 
 # --- NCS 전공과목의 헤딩 변형 ("NCS정보 및 교과목표") ---
